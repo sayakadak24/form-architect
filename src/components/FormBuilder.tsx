@@ -1,6 +1,5 @@
 
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import { useState } from "react";
 import { FormElement } from "@/components/FormElement";
 import { ElementLibrary } from "@/components/ElementLibrary";
 import { v4 as uuidv4 } from "uuid";
@@ -17,9 +16,12 @@ interface FormElementType {
   };
 }
 
-export const FormBuilder = () => {
-  const [elements, setElements] = useState<FormElementType[]>([]);
+interface FormBuilderProps {
+  elements: FormElementType[];
+  setElements: (elements: FormElementType[]) => void;
+}
 
+export const FormBuilder = ({ elements, setElements }: FormBuilderProps) => {
   const onDragEnd = (result: any) => {
     if (!result.destination) return;
 

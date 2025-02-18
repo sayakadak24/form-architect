@@ -4,8 +4,21 @@ import { FormBuilder } from "@/components/FormBuilder";
 import { useState } from "react";
 import { FormPreview } from "@/components/FormPreview";
 
+interface FormElementType {
+  id: string;
+  type: string;
+  label: string;
+  options?: string[];
+  required?: boolean;
+  branchingLogic?: {
+    condition: string;
+    targetId: string;
+  };
+}
+
 const Index = () => {
   const [previewMode, setPreviewMode] = useState(false);
+  const [elements, setElements] = useState<FormElementType[]>([]);
 
   return (
     <div className="min-h-screen bg-secondary">
@@ -26,7 +39,11 @@ const Index = () => {
       </header>
 
       <main className="container mx-auto px-4 pt-24 pb-12 animate-fade-in">
-        {previewMode ? <FormPreview /> : <FormBuilder />}
+        {previewMode ? (
+          <FormPreview elements={elements} />
+        ) : (
+          <FormBuilder elements={elements} setElements={setElements} />
+        )}
       </main>
     </div>
   );

@@ -5,11 +5,22 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { toast } from "sonner";
 
-export const FormPreview = () => {
-  const [responses, setResponses] = useState({});
+interface FormPreviewProps {
+  elements: Array<{
+    id: string;
+    type: string;
+    label: string;
+    options?: string[];
+    required?: boolean;
+    branchingLogic?: {
+      condition: string;
+      targetId: string;
+    };
+  }>;
+}
 
-  // This would typically come from your form state management
-  const elements = [];
+export const FormPreview = ({ elements }: FormPreviewProps) => {
+  const [responses, setResponses] = useState({});
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
