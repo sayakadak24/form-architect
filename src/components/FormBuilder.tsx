@@ -48,10 +48,10 @@ export const FormBuilder = () => {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-      <div className="lg:col-span-9">
-        <div className="bg-white rounded-xl shadow-sm p-8 min-h-[600px] animate-slide-in">
-          <DragDropContext onDragEnd={onDragEnd}>
+    <DragDropContext onDragEnd={onDragEnd}>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="lg:col-span-9">
+          <div className="bg-white rounded-xl shadow-sm p-8 min-h-[600px] animate-slide-in">
             <Droppable droppableId="form-elements">
               {(provided) => (
                 <div
@@ -86,13 +86,13 @@ export const FormBuilder = () => {
                 </div>
               )}
             </Droppable>
-          </DragDropContext>
+          </div>
+        </div>
+
+        <div className="lg:col-span-3">
+          <ElementLibrary />
         </div>
       </div>
-
-      <div className="lg:col-span-3">
-        <ElementLibrary />
-      </div>
-    </div>
+    </DragDropContext>
   );
 };
