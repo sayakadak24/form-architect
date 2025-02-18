@@ -3,13 +3,48 @@ import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { useState } from "react";
 import { FormElement } from "@/components/FormElement";
 import { ElementLibrary } from "@/components/ElementLibrary";
+import { v4 as uuidv4 } from "uuid";
+
+interface FormElementType {
+  id: string;
+  type: string;
+  label: string;
+  branchingLogic?: {
+    condition: string;
+    targetId: string;
+  };
+}
 
 export const FormBuilder = () => {
-  const [elements, setElements] = useState([]);
+  const [elements, setElements] = useState<FormElementType[]>([]);
 
   const onDragEnd = (result: any) => {
     if (!result.destination) return;
-    // Handle drag and drop logic here
+
+    const { source, destination } = result;
+
+    // If dragging from library to form
+    if (source.droppableId === "element-library" && destination.droppableId === "form-elements") {
+      const sourceId = result.draggableId.replace("library-", "");
+      const newElement = {
+        id: uuidv4(),
+        type: sourceId,
+        label: `New ${sourceId.charAt(0).toUpperCase() + sourceId.slice(1)} Question`,
+      };
+
+      const newElements = [...elements];
+      newElements.splice(destination.index, 0, newElement);
+      setElements(newElements);
+      return;
+    }
+
+    // If reordering within form
+    if (source.droppableId === "form-elements" && destination.droppableId === "form-elements") {
+      const newElements = Array.from(elements);
+      const [removed] = newElements.splice(source.index, 1);
+      newElements.splice(destination.index, 0, removed);
+      setElements(newElements);
+    }
   };
 
   return (
