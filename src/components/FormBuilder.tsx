@@ -9,6 +9,8 @@ interface FormElementType {
   id: string;
   type: string;
   label: string;
+  options?: string[];
+  required?: boolean;
   branchingLogic?: {
     condition: string;
     targetId: string;
@@ -30,6 +32,10 @@ export const FormBuilder = () => {
         id: uuidv4(),
         type: sourceId,
         label: `New ${sourceId.charAt(0).toUpperCase() + sourceId.slice(1)} Question`,
+        options: ['Option 1', 'Option 2', 'Option 3'].filter(() => 
+          sourceId === 'radio' || sourceId === 'checkbox' || sourceId === 'select'
+        ),
+        required: false,
       };
 
       const newElements = [...elements];
@@ -45,6 +51,12 @@ export const FormBuilder = () => {
       newElements.splice(destination.index, 0, removed);
       setElements(newElements);
     }
+  };
+
+  const handleElementUpdate = (id: string, updates: Partial<FormElementType>) => {
+    setElements(elements.map(element => 
+      element.id === id ? { ...element, ...updates } : element
+    ));
   };
 
   return (
@@ -76,7 +88,10 @@ export const FormBuilder = () => {
                             {...provided.draggableProps}
                             {...provided.dragHandleProps}
                           >
-                            <FormElement element={element} />
+                            <FormElement 
+                              element={element} 
+                              onUpdate={handleElementUpdate}
+                            />
                           </div>
                         )}
                       </Draggable>
