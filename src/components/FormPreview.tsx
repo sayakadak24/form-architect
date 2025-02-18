@@ -20,12 +20,19 @@ interface FormPreviewProps {
 }
 
 export const FormPreview = ({ elements }: FormPreviewProps) => {
-  const [responses, setResponses] = useState({});
+  const [responses, setResponses] = useState<Record<string, any>>({});
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     toast.success("Form submitted successfully!");
     console.log("Form responses:", responses);
+  };
+
+  const handleResponseChange = (id: string, value: any) => {
+    setResponses(prev => ({
+      ...prev,
+      [id]: value
+    }));
   };
 
   return (
@@ -44,6 +51,9 @@ export const FormPreview = ({ elements }: FormPreviewProps) => {
                   key={element.id}
                   element={element}
                   isPreview={true}
+                  allElements={elements}
+                  responses={responses}
+                  onResponseChange={handleResponseChange}
                 />
               ))}
               <Button type="submit" className="w-full">
