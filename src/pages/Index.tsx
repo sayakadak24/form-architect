@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { FormPreview } from "@/components/FormPreview";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { Json } from "@/integrations/supabase/types";
 
 interface FormElementType {
   id: string;
@@ -69,7 +70,7 @@ const Index = () => {
       const { error } = await supabase.from('forms').insert({
         user_id: session.user.id,
         title: 'Untitled Form',
-        elements: elements
+        elements: elements as unknown as Json, // Type assertion to match Supabase's Json type
       });
 
       if (error) throw error;
