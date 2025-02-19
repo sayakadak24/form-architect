@@ -9,7 +9,71 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      form_responses: {
+        Row: {
+          created_at: string
+          form_id: string | null
+          id: string
+          responses: Json
+        }
+        Insert: {
+          created_at?: string
+          form_id?: string | null
+          id?: string
+          responses: Json
+        }
+        Update: {
+          created_at?: string
+          form_id?: string | null
+          id?: string
+          responses?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "form_responses_form_id_fkey"
+            columns: ["form_id"]
+            isOneToOne: false
+            referencedRelation: "forms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      forms: {
+        Row: {
+          created_at: string
+          description: string | null
+          elements: Json
+          id: string
+          microsoft_drive_id: string | null
+          microsoft_file_id: string | null
+          title: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          elements: Json
+          id?: string
+          microsoft_drive_id?: string | null
+          microsoft_file_id?: string | null
+          title: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          elements?: Json
+          id?: string
+          microsoft_drive_id?: string | null
+          microsoft_file_id?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
