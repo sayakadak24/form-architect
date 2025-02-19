@@ -1,4 +1,3 @@
-
 import { Card } from "@/components/ui/card";
 import { Text, Hash, List, Calendar, RadioIcon, CheckSquare, FileText, ArrowRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -63,15 +62,19 @@ export const FormElement = ({
     setIsEditing(false);
   };
 
-  // Check if this element should be shown based on branching logic
   const shouldShowElement = () => {
     if (!element.branchingLogic) return true;
+    
     const targetElement = allElements.find(el => el.id === element.branchingLogic?.targetId);
     if (!targetElement) return true;
 
-    const targetResponse = responses[targetElement.id];
+    const targetResponse = responses[element.branchingLogic.targetId];
     return targetResponse === element.branchingLogic.condition;
   };
+
+  if (isPreview && !shouldShowElement()) {
+    return null;
+  }
 
   const renderPreviewInput = () => {
     if (!shouldShowElement()) return null;
@@ -298,7 +301,9 @@ export const FormElement = ({
                 >
                   <option value="">No branching</option>
                   {allElements
-                    .filter(el => el.id !== element.id)
+                    .filter(el => el.id !== element.id && (
+                      el.type === 'radio' || el.type === 'select' || el.type === 'text'
+                    ))
                     .map(el => (
                       <option key={el.id} value={el.id}>
                         {el.label}
@@ -307,7 +312,7 @@ export const FormElement = ({
                 </select>
                 {element.branchingLogic?.targetId && (
                   <Input
-                    placeholder="Condition value"
+                    placeholder="Enter condition value"
                     value={element.branchingLogic.condition || ""}
                     onChange={(e) => {
                       if (onUpdate) {
@@ -322,6 +327,13 @@ export const FormElement = ({
                   />
                 )}
               </div>
+              {element.branchingLogic?.targetId && (
+                <p className="text-sm text-gray-500 mt-1">
+                  This question will only show when the answer to "{
+                    allElements.find(el => el.id === element.branchingLogic?.targetId)?.label
+                  }" matches exactly "{element.branchingLogic.condition}"
+                </p>
+              )}
             </div>
           </div>
         )}

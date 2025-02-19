@@ -3,6 +3,9 @@ import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { FormElement } from "@/components/FormElement";
 import { ElementLibrary } from "@/components/ElementLibrary";
 import { v4 as uuidv4 } from "uuid";
+import { Button } from "@/components/ui/button";
+import { Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 interface FormElementType {
   id: string;
@@ -61,6 +64,11 @@ export const FormBuilder = ({ elements, setElements }: FormBuilderProps) => {
     ));
   };
 
+  const handleElementDelete = (id: string) => {
+    setElements(elements.filter(element => element.id !== id));
+    toast.success("Element deleted successfully");
+  };
+
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -89,11 +97,21 @@ export const FormBuilder = ({ elements, setElements }: FormBuilderProps) => {
                             ref={provided.innerRef}
                             {...provided.draggableProps}
                             {...provided.dragHandleProps}
+                            className="relative group"
                           >
                             <FormElement 
                               element={element} 
                               onUpdate={handleElementUpdate}
+                              allElements={elements}
                             />
+                            <Button
+                              variant="destructive"
+                              size="icon"
+                              className="absolute -right-2 -top-2 hidden group-hover:flex"
+                              onClick={() => handleElementDelete(element.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         )}
                       </Draggable>
