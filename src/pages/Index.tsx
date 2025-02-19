@@ -6,6 +6,7 @@ import { FormPreview } from "@/components/FormPreview";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Json } from "@/integrations/supabase/types";
+import { Link } from 'react-router-dom';
 
 interface FormElementType {
   id: string;
@@ -23,6 +24,7 @@ const Index = () => {
   const [previewMode, setPreviewMode] = useState(false);
   const [elements, setElements] = useState<FormElementType[]>([]);
   const [session, setSession] = useState<any>(null);
+  const [savedFormId, setSavedFormId] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -67,13 +69,15 @@ const Index = () => {
     }
 
     try {
-      const { error } = await supabase.from('forms').insert({
+      const { data, error } = await supabase.from('forms').insert({
         user_id: session.user.id,
         title: 'Untitled Form',
-        elements: elements as unknown as Json, // Type assertion to match Supabase's Json type
-      });
+        elements: elements as unknown as Json,
+      }).select();
 
       if (error) throw error;
+      
+      setSavedFormId(data[0].id);
       toast.success("Form saved successfully");
     } catch (error: any) {
       toast.error(error.message);
@@ -112,6 +116,28 @@ const Index = () => {
       </header>
 
       <main className="container mx-auto px-4 pt-24 pb-12 animate-fade-in">
+        {savedFormId && (
+          <div className="mb-6 p-4 bg-white rounded-lg shadow">
+            <p className="text-sm text-gray-600 mb-2">Share this link with others to fill out your form:</p>
+            <div className="flex items-center gap-4">
+              <code className="bg-gray-100 px-3 py-2 rounded flex-1">
+                {window.location.origin}/form/{savedFormId}
+              </code>
+              <Button 
+                onClick={() => {
+                  navigator.clipboard.writeText(`${window.location.origin}/form/${savedFormId}`);
+                  toast.success('Link copied to clipboard!');
+                }}
+                variant="outline"
+              >
+                Copy Link
+              </Button>
+              <Link to={`/form/${savedFormId}`} target="_blank">
+                <Button variant="outline">Open Form</Button>
+              </Link>
+            </div>
+          </div>
+        )}
         {previewMode ? (
           <FormPreview elements={elements} />
         ) : (
