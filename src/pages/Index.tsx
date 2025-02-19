@@ -40,10 +40,7 @@ const Index = () => {
   const handleLogin = async () => {
     try {
       const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'azure',
-        options: {
-          scopes: 'Files.ReadWrite Sites.ReadWrite.All User.Read'
-        }
+        provider: 'google',
       });
       
       if (error) throw error;
@@ -106,7 +103,7 @@ const Index = () => {
               </>
             ) : (
               <Button onClick={handleLogin} className="bg-accent hover:bg-accent/90">
-                Login with Microsoft
+                Login with Google
               </Button>
             )}
           </div>
