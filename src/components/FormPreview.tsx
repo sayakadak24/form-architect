@@ -4,6 +4,7 @@ import { FormElement } from "@/components/FormElement";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface FormPreviewProps {
   elements: Array<{
@@ -19,15 +20,62 @@ interface FormPreviewProps {
   }>;
   responses?: Record<string, any>;
   onResponseChange?: (id: string, value: any) => void;
+  formId?: string;
 }
 
-export const FormPreview = ({ elements, responses = {}, onResponseChange }: FormPreviewProps) => {
+export const FormPreview = ({ elements, responses = {}, onResponseChange, formId }: FormPreviewProps) => {
   const [localResponses, setLocalResponses] = useState<Record<string, any>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast.success("Form submitted successfully!");
-    console.log("Form responses:", responses || localResponses);
+    
+    // Check if all required fields are filled
+    const requiredFields = elements.filter(el => el.required);
+    const missingFields = requiredFields.filter(field => {
+      const response = responses[field.id] || localResponses[field.id];
+      return !response || (Array.isArray(response) && response.length === 0);
+    });
+
+    if (missingFields.length > 0) {
+      toast.error(`Please fill in all required fields: ${missingFields.map(f => f.label).join(', ')}`);
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const currentResponses = responses || localResponses;
+      
+      if (formId) {
+        // If formId exists, submit to database
+        const { error } = await supabase
+          .from('form_responses')
+          .insert({
+            form_id: formId,
+            responses: currentResponses
+          });
+
+        if (error) throw error;
+        
+        toast.success("Form submitted successfully!");
+      } else {
+        // If no formId (preview mode), just log responses
+        console.log("Form responses:", currentResponses);
+        toast.success("Form submitted in preview mode");
+      }
+
+      // Clear responses after successful submission
+      if (onResponseChange) {
+        elements.forEach(element => onResponseChange(element.id, ''));
+      } else {
+        setLocalResponses({});
+      }
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleResponseChange = (id: string, value: any) => {
@@ -62,8 +110,12 @@ export const FormPreview = ({ elements, responses = {}, onResponseChange }: Form
                   onResponseChange={handleResponseChange}
                 />
               ))}
-              <Button type="submit" className="w-full">
-                Submit Form
+              <Button 
+                type="submit" 
+                className="w-full"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Submitting..." : "Submit Form"}
               </Button>
             </>
           )}

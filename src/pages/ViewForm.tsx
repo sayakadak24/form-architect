@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { FormPreview } from "@/components/FormPreview";
-import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 const ViewForm = () => {
@@ -40,27 +39,6 @@ const ViewForm = () => {
     fetchForm();
   }, [formId, navigate]);
 
-  const handleSubmit = async () => {
-    try {
-      const { error } = await supabase
-        .from('form_responses')
-        .insert({
-          form_id: formId,
-          responses: {
-            ...responses,
-            submittedBy: session.user.email
-          }
-        });
-
-      if (error) throw error;
-      
-      toast.success("Form submitted successfully!");
-      navigate('/');
-    } catch (error: any) {
-      toast.error(error.message);
-    }
-  };
-
   if (!form) {
     return <div>Loading...</div>;
   }
@@ -83,12 +61,8 @@ const ViewForm = () => {
               [id]: value
             }));
           }}
+          formId={formId}
         />
-        <div className="mt-8 flex justify-end">
-          <Button onClick={handleSubmit} className="bg-accent hover:bg-accent/90">
-            Submit Form
-          </Button>
-        </div>
       </main>
     </div>
   );
