@@ -17,22 +17,28 @@ interface FormPreviewProps {
       targetId: string;
     };
   }>;
+  responses?: Record<string, any>;
+  onResponseChange?: (id: string, value: any) => void;
 }
 
-export const FormPreview = ({ elements }: FormPreviewProps) => {
-  const [responses, setResponses] = useState<Record<string, any>>({});
+export const FormPreview = ({ elements, responses = {}, onResponseChange }: FormPreviewProps) => {
+  const [localResponses, setLocalResponses] = useState<Record<string, any>>({});
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     toast.success("Form submitted successfully!");
-    console.log("Form responses:", responses);
+    console.log("Form responses:", responses || localResponses);
   };
 
   const handleResponseChange = (id: string, value: any) => {
-    setResponses(prev => ({
-      ...prev,
-      [id]: value
-    }));
+    if (onResponseChange) {
+      onResponseChange(id, value);
+    } else {
+      setLocalResponses(prev => ({
+        ...prev,
+        [id]: value
+      }));
+    }
   };
 
   return (
@@ -52,7 +58,7 @@ export const FormPreview = ({ elements }: FormPreviewProps) => {
                   element={element}
                   isPreview={true}
                   allElements={elements}
-                  responses={responses}
+                  responses={responses || localResponses}
                   onResponseChange={handleResponseChange}
                 />
               ))}
