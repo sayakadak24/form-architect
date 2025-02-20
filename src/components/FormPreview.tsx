@@ -2,6 +2,7 @@
 import { Card } from "@/components/ui/card";
 import { FormElement } from "@/components/FormElement";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -26,10 +27,17 @@ interface FormPreviewProps {
 export const FormPreview = ({ elements, responses = {}, onResponseChange, formId }: FormPreviewProps) => {
   const [localResponses, setLocalResponses] = useState<Record<string, any>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [excelFileUrl, setExcelFileUrl] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Check if Excel URL is provided
+    if (!excelFileUrl) {
+      toast.error("Please provide the Excel file URL");
+      return;
+    }
+
     // Check if all required fields are filled
     const requiredFields = elements.filter(el => el.required);
     const missingFields = requiredFields.filter(field => {
@@ -47,23 +55,17 @@ export const FormPreview = ({ elements, responses = {}, onResponseChange, formId
     try {
       const currentResponses = responses || localResponses;
       
-      if (formId) {
-        // If formId exists, submit to database
-        const { error } = await supabase
-          .from('form_responses')
-          .insert({
-            form_id: formId,
-            responses: currentResponses
-          });
+      // Send data to Edge Function
+      const { error: functionError } = await supabase.functions.invoke('update-excel', {
+        body: {
+          formData: currentResponses,
+          excelFileUrl: excelFileUrl,
+        }
+      });
 
-        if (error) throw error;
-        
-        toast.success("Form submitted successfully!");
-      } else {
-        // If no formId (preview mode), just log responses
-        console.log("Form responses:", currentResponses);
-        toast.success("Form submitted in preview mode");
-      }
+      if (functionError) throw functionError;
+      
+      toast.success("Form submitted successfully!");
 
       // Clear responses after successful submission
       if (onResponseChange) {
@@ -71,6 +73,7 @@ export const FormPreview = ({ elements, responses = {}, onResponseChange, formId
       } else {
         setLocalResponses({});
       }
+      
     } catch (error: any) {
       toast.error(error.message);
     } finally {
@@ -110,6 +113,20 @@ export const FormPreview = ({ elements, responses = {}, onResponseChange, formId
                   onResponseChange={handleResponseChange}
                 />
               ))}
+              <div className="space-y-2">
+                <label htmlFor="excelUrl" className="block text-sm font-medium text-gray-700">
+                  Excel File URL
+                </label>
+                <Input
+                  id="excelUrl"
+                  type="url"
+                  value={excelFileUrl}
+                  onChange={(e) => setExcelFileUrl(e.target.value)}
+                  placeholder="Enter your SharePoint Excel file URL"
+                  required
+                  className="w-full"
+                />
+              </div>
               <Button 
                 type="submit" 
                 className="w-full"
