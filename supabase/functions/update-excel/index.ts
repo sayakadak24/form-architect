@@ -1,6 +1,6 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { ClientSecretCredential } from "https://deno.land/x/azure_identity@1.1.0/mod.ts";
+import { DeviceCodeCredential } from "https://deno.land/x/azure_identity@1.1.0/mod.ts";
 import { Client } from "https://deno.land/x/microsoft_graph@1.0.1/client.ts";
 
 const corsHeaders = {
@@ -9,7 +9,7 @@ const corsHeaders = {
 }
 
 const TENANT_ID = "04ec3963-dddc-45fb-afb7-85fa38e19b99";
-const CLIENT_ID = "7c8cca7c-7351-4d57-b94d-18e2b1e4e24";
+const CLIENT_ID = "7c8cca7c-7351-4d57-b94d-18e2ba1e4e24";
 
 serve(async (req) => {
   // Handle CORS
@@ -20,24 +20,21 @@ serve(async (req) => {
   try {
     const { formData, excelFileUrl } = await req.json();
 
-    // Get client secret from environment variable
-    const clientSecret = Deno.env.get('AZURE_CLIENT_SECRET');
-    if (!clientSecret) {
-      throw new Error('Azure client secret not configured');
-    }
-
-    console.log('Initializing Azure credentials...');
+    console.log('Initializing Azure credentials with Device Code Flow...');
     
-    // Initialize the Azure AD credentials
-    const credential = new ClientSecretCredential(
-      TENANT_ID,
-      CLIENT_ID,
-      clientSecret
-    );
+    // Initialize Device Code Flow credentials
+    const credential = new DeviceCodeCredential({
+      tenantId: TENANT_ID,
+      clientId: CLIENT_ID,
+      userPromptCallback: (deviceCodeInfo) => {
+        console.log('User authentication required:');
+        console.log(deviceCodeInfo.message);
+      }
+    });
 
     console.log('Creating Microsoft Graph client...');
     
-    // Create Microsoft Graph client
+    // Create Microsoft Graph client with device code flow
     const client = new Client(credential, {
       scopes: ['https://graph.microsoft.com/.default']
     });
@@ -59,8 +56,6 @@ serve(async (req) => {
     }));
 
     // Update Excel file
-    // Note: This is a simplified example. You'll need to adjust the exact range and format
-    // based on your Excel file structure
     await client.api(`/drive/items/${fileId}/workbook/worksheets/Sheet1/range(address='A:B')`).patch({
       values: worksheetData.map(item => [item.key, item.value])
     });
