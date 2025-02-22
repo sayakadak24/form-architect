@@ -31,7 +31,7 @@ async function getCachedToken(): Promise<string | null> {
   return cache.cache_data.access_token;
 }
 
-async function cacheToken(tokenData: any): Promise<void> {
+async function cacheToken(tokenData: any, configPath: string): Promise<void> {
   const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
   
   await supabaseAdmin
@@ -39,13 +39,14 @@ async function cacheToken(tokenData: any): Promise<void> {
     .upsert({
       tenant_id: TENANT_ID,
       cache_data: tokenData,
-      expires_at: expiresAt.toISOString()
+      expires_at: expiresAt.toISOString(),
+      config_file_path: configPath
     }, {
       onConflict: 'tenant_id'
     });
 }
 
-async function getAccessToken(): Promise<string> {
+async function getAccessToken(configPath: string): Promise<string> {
   // Try to get cached token first
   const cachedToken = await getCachedToken();
   if (cachedToken) {
@@ -91,8 +92,8 @@ async function getAccessToken(): Promise<string> {
     if (tokenResponse.ok) {
       const tokenData = await tokenResponse.json();
       
-      // Cache the token
-      await cacheToken(tokenData);
+      // Cache the token with config file reference
+      await cacheToken(tokenData, configPath);
       
       return tokenData.access_token;
     }
@@ -104,30 +105,6 @@ async function getAccessToken(): Promise<string> {
   throw new Error('Authentication timeout or user declined.');
 }
 
-async function updateExcelFile(accessToken: string, fileId: string, formData: Record<string, any>) {
-  const graphEndpoint = `https://graph.microsoft.com/v1.0/drive/items/${fileId}/workbook/worksheets/Sheet1/range(address='A:B')`;
-  
-  const worksheetData = Object.entries(formData).map(([key, value]) => [key, String(value)]);
-  
-  const response = await fetch(graphEndpoint, {
-    method: 'PATCH',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      values: worksheetData
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`Failed to update Excel file: ${error.message}`);
-  }
-
-  return response.json();
-}
-
 serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
@@ -135,28 +112,33 @@ serve(async (req) => {
   }
 
   try {
-    const { formData, excelFileUrl } = await req.json();
+    const { formData, configPath } = await req.json();
 
-    // Extract the file ID from the SharePoint URL
-    const fileIdMatch = excelFileUrl.match(/sourcedoc=%7B([^}]+)%7D/);
-    if (!fileIdMatch) {
-      throw new Error('Invalid Excel file URL format');
+    if (!configPath) {
+      throw new Error('Config file path is required');
     }
-    const fileId = fileIdMatch[1];
+
+    // Get the config file from storage
+    const { data: configFile, error: configError } = await supabaseAdmin.storage
+      .from('configs')
+      .download(configPath);
+
+    if (configError) {
+      throw new Error(`Failed to read config file: ${configError.message}`);
+    }
+
+    // Read the config file content
+    const configContent = await configFile.text();
+    console.log('Config file content:', configContent);
 
     console.log('Getting access token...');
-    const accessToken = await getAccessToken();
+    const accessToken = await getAccessToken(configPath);
 
-    console.log('Updating Excel file:', fileId);
-    console.log('Form data:', formData);
-
-    await updateExcelFile(accessToken, fileId, formData);
-
-    console.log('Excel file updated successfully');
+    console.log('Processing form data with config:', formData);
 
     return new Response(
       JSON.stringify({
-        message: 'Excel file updated successfully',
+        message: 'Form processed successfully',
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
