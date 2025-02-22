@@ -1,5 +1,6 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -10,7 +11,50 @@ const TENANT_ID = "04ec3963-dddc-45fb-afb7-85fa38e19b99";
 const CLIENT_ID = "7c8cca7c-7351-4d57-b94d-18e2ba1e4e24";
 const MICROSOFT_LOGIN_URL = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0`;
 
+// Initialize Supabase client with service role key
+const supabaseAdmin = createClient(
+  Deno.env.get('SUPABASE_URL') ?? '',
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+);
+
+async function getCachedToken(): Promise<string | null> {
+  const { data: cache, error } = await supabaseAdmin
+    .from('azure_token_cache')
+    .select('*')
+    .eq('tenant_id', TENANT_ID)
+    .single();
+
+  if (error || !cache || new Date(cache.expires_at) <= new Date()) {
+    return null;
+  }
+
+  return cache.cache_data.access_token;
+}
+
+async function cacheToken(tokenData: any): Promise<void> {
+  const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
+  
+  await supabaseAdmin
+    .from('azure_token_cache')
+    .upsert({
+      tenant_id: TENANT_ID,
+      cache_data: tokenData,
+      expires_at: expiresAt.toISOString()
+    }, {
+      onConflict: 'tenant_id'
+    });
+}
+
 async function getAccessToken(): Promise<string> {
+  // Try to get cached token first
+  const cachedToken = await getCachedToken();
+  if (cachedToken) {
+    console.log('Using cached token');
+    return cachedToken;
+  }
+
+  console.log('No valid cached token found, initiating device code flow...');
+  
   const deviceCodeResponse = await fetch(`${MICROSOFT_LOGIN_URL}/devicecode`, {
     method: 'POST',
     headers: {
@@ -46,6 +90,10 @@ async function getAccessToken(): Promise<string> {
 
     if (tokenResponse.ok) {
       const tokenData = await tokenResponse.json();
+      
+      // Cache the token
+      await cacheToken(tokenData);
+      
       return tokenData.access_token;
     }
 
