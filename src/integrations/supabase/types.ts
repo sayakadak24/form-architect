@@ -9,6 +9,24 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      admin_users: {
+        Row: {
+          created_at: string | null
+          email: string
+          id: string
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          id: string
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          id?: string
+        }
+        Relationships: []
+      }
       azure_token_cache: {
         Row: {
           cache_data: Json
@@ -64,9 +82,11 @@ export type Database = {
       }
       forms: {
         Row: {
+          config_file_path: string | null
           created_at: string
           description: string | null
           elements: Json
+          excel_url: string | null
           id: string
           microsoft_drive_id: string | null
           microsoft_file_id: string | null
@@ -75,9 +95,11 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          config_file_path?: string | null
           created_at?: string
           description?: string | null
           elements: Json
+          excel_url?: string | null
           id?: string
           microsoft_drive_id?: string | null
           microsoft_file_id?: string | null
@@ -86,9 +108,11 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          config_file_path?: string | null
           created_at?: string
           description?: string | null
           elements?: Json
+          excel_url?: string | null
           id?: string
           microsoft_drive_id?: string | null
           microsoft_file_id?: string | null
