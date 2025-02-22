@@ -1,4 +1,3 @@
-
 import { Button } from "@/components/ui/button";
 import { FormBuilder } from "@/components/FormBuilder";
 import { useState, useEffect } from "react";
@@ -9,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Link } from 'react-router-dom';
 import { Icons } from "@/components/ui/icons";
+import { useNavigate } from "react-router-dom";
 
 interface FormType {
   id: string;
@@ -19,12 +19,14 @@ interface FormType {
 }
 
 const Index = () => {
+  const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState(false);
   const [forms, setForms] = useState<FormType[]>([]);
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [session, setSession] = useState<any>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -103,6 +105,43 @@ const Index = () => {
     }
   };
 
+  const handleConfigFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      setUploading(true);
+      const { data, error } = await supabase
+        .from('admin_users')
+        .update({ config_file_path: file.name })
+        .eq('id', session?.user?.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      toast.success("Config file updated successfully!");
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDeleteForm = async (formId: string) => {
+    try {
+      const { error } = await supabase
+        .from('forms')
+        .delete()
+        .eq('id', formId);
+
+      if (error) throw error;
+      toast.success("Form deleted successfully!");
+      fetchForms();
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
+
   if (!session) {
     return (
       <div className="min-h-screen bg-secondary flex items-center justify-center">
@@ -169,14 +208,32 @@ const Index = () => {
 
       <main className="container mx-auto px-4 pt-24 pb-12">
         <div className="grid gap-6">
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center flex-wrap gap-4">
             <h2 className="text-xl font-semibold">Your Forms</h2>
-            <Link to="/create-form">
-              <Button>
-                <Icons.plus className="h-4 w-4 mr-2" />
-                Create New Form
-              </Button>
-            </Link>
+            <div className="flex gap-4">
+              <div>
+                <input
+                  type="file"
+                  id="configFile"
+                  className="hidden"
+                  onChange={handleConfigFileUpload}
+                  accept=".json"
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => document.getElementById('configFile')?.click()}
+                  disabled={uploading}
+                >
+                  {uploading ? 'Uploading...' : 'Upload Config File'}
+                </Button>
+              </div>
+              <Link to="/create-form">
+                <Button>
+                  <Icons.plus className="h-4 w-4 mr-2" />
+                  Create New Form
+                </Button>
+              </Link>
+            </div>
           </div>
 
           {loading ? (
@@ -211,6 +268,13 @@ const Index = () => {
                       }}
                     >
                       <Icons.copy className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      className="px-3"
+                      onClick={() => handleDeleteForm(form.id)}
+                    >
+                      <Icons.trash className="h-4 w-4" />
                     </Button>
                   </div>
                 </Card>
