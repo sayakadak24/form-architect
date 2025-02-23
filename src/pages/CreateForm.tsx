@@ -84,7 +84,7 @@ const CreateForm = () => {
           </div>
         </Card>
 
-        <FormBuilder elements={elements} onChange={setElements} />
+        <FormBuilder elements={elements} setElements={setElements} />
 
         <div className="flex justify-end gap-4 mt-6">
           <Button variant="outline" onClick={() => navigate('/')}>

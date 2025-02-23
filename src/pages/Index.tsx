@@ -1,3 +1,4 @@
+
 import { Button } from "@/components/ui/button";
 import { FormBuilder } from "@/components/FormBuilder";
 import { useState, useEffect } from "react";
@@ -113,10 +114,12 @@ const Index = () => {
       setUploading(true);
       const { data, error } = await supabase
         .from('admin_users')
-        .update({ config_file_path: file.name })
+        .update({ 
+          config_file_path: file.name,
+          email: session?.user?.email // Include email to match the allowed fields
+        })
         .eq('id', session?.user?.id)
-        .select()
-        .single();
+        .select();
 
       if (error) throw error;
       toast.success("Config file updated successfully!");
