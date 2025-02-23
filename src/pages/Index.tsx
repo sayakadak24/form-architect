@@ -112,18 +112,26 @@ const Index = () => {
       if (!file) return;
 
       setUploading(true);
-      const { data, error } = await supabase
-        .from('admin_users')
-        .update({ 
-          config_file_path: file.name,
-          email: session?.user?.email // Include email to match the allowed fields
-        })
-        .eq('id', session?.user?.id)
-        .select();
 
-      if (error) throw error;
-      toast.success("Config file updated successfully!");
+      // First, upload the file to storage
+      const filePath = `config/${session.user.id}/${file.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from('configs')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // Then update the admin_users table
+      const { error: updateError } = await supabase
+        .from('admin_users')
+        .update({ config_file_path: filePath })
+        .eq('id', session.user.id);
+
+      if (updateError) throw updateError;
+
+      toast.success("Config file uploaded successfully!");
     } catch (error: any) {
+      console.error('Upload error:', error);
       toast.error(error.message);
     } finally {
       setUploading(false);
