@@ -2,7 +2,6 @@
 import { Card } from "@/components/ui/card";
 import { FormElement } from "@/components/FormElement";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,16 +26,9 @@ interface FormPreviewProps {
 export const FormPreview = ({ elements, responses = {}, onResponseChange, formId }: FormPreviewProps) => {
   const [localResponses, setLocalResponses] = useState<Record<string, any>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [configFile, setConfigFile] = useState<File | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Check if config file is provided
-    if (!configFile) {
-      toast.error("Please upload a config file");
-      return;
-    }
 
     // Check if all required fields are filled
     const requiredFields = elements.filter(el => el.required);
@@ -55,19 +47,10 @@ export const FormPreview = ({ elements, responses = {}, onResponseChange, formId
     try {
       const currentResponses = responses || localResponses;
       
-      // First upload the config file
-      const fileName = `${crypto.randomUUID()}-${configFile.name}`;
-      const { error: uploadError, data } = await supabase.storage
-        .from('configs')
-        .upload(fileName, configFile);
-
-      if (uploadError) throw uploadError;
-
       // Send data to Edge Function
       const { error: functionError } = await supabase.functions.invoke('update-excel', {
         body: {
           formData: currentResponses,
-          configPath: fileName,
         }
       });
 
@@ -81,9 +64,6 @@ export const FormPreview = ({ elements, responses = {}, onResponseChange, formId
       } else {
         setLocalResponses({});
       }
-      
-      // Clear the file input
-      setConfigFile(null);
       
     } catch (error: any) {
       toast.error(error.message);
@@ -124,18 +104,6 @@ export const FormPreview = ({ elements, responses = {}, onResponseChange, formId
                   onResponseChange={handleResponseChange}
                 />
               ))}
-              <div className="space-y-2">
-                <label htmlFor="configFile" className="block text-sm font-medium text-gray-700">
-                  Config File
-                </label>
-                <Input
-                  id="configFile"
-                  type="file"
-                  onChange={(e) => setConfigFile(e.target.files?.[0] || null)}
-                  className="w-full"
-                  accept=".json,.txt"
-                />
-              </div>
               <Button 
                 type="submit" 
                 className="w-full"
