@@ -51,6 +51,7 @@ export const FormPreview = ({ elements, responses = {}, onResponseChange, formId
       const { error: functionError } = await supabase.functions.invoke('update-excel', {
         body: {
           formData: currentResponses,
+          formId: formId
         }
       });
 
