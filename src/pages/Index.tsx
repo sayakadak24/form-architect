@@ -19,13 +19,6 @@ interface FormType {
   created_at: string;
 }
 
-interface AdminUser {
-  id: string;
-  email: string;
-  created_at?: string;
-  config_file_path?: string;
-}
-
 const Index = () => {
   const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState(false);
@@ -128,13 +121,10 @@ const Index = () => {
 
       if (uploadError) throw uploadError;
 
-      // Then update the admin_users table with proper typing
+      // Then update the admin_users table
       const { error: updateError } = await supabase
         .from('admin_users')
-        .update({
-          config_file_path: filePath,
-          updated_at: new Date().toISOString()
-        } as AdminUser)
+        .update({ config_file_path: filePath })
         .eq('id', session.user.id);
 
       if (updateError) throw updateError;

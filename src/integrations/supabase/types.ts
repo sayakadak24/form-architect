@@ -27,6 +27,30 @@ export type Database = {
         }
         Relationships: []
       }
+      azure_token_cache: {
+        Row: {
+          cache_data: Json
+          expires_at: string
+          id: string
+          last_updated: string | null
+          tenant_id: string
+        }
+        Insert: {
+          cache_data: Json
+          expires_at: string
+          id?: string
+          last_updated?: string | null
+          tenant_id: string
+        }
+        Update: {
+          cache_data?: Json
+          expires_at?: string
+          id?: string
+          last_updated?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       form_responses: {
         Row: {
           created_at: string
