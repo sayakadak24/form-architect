@@ -22,6 +22,13 @@ const CreateForm = () => {
         return;
       }
 
+      // Get the current user's session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        toast.error("You must be logged in to create a form");
+        return;
+      }
+
       const { data, error } = await supabase
         .from('forms')
         .insert([
@@ -29,7 +36,8 @@ const CreateForm = () => {
             title,
             description,
             excel_url: excelUrl,
-            elements
+            elements,
+            user_id: session.user.id // Set the user_id when creating the form
           }
         ])
         .select()
