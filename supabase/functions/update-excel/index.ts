@@ -7,6 +7,60 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+class WorkbookClient {
+  private accessToken: string;
+  private itemId: string | null = null;
+
+  constructor(private config: any, private url: string) {
+    // Extract the access token from the config
+    const accessTokenKey = Object.keys(config.AccessToken)[0];
+    this.accessToken = config.AccessToken[accessTokenKey].secret;
+  }
+
+  async initialize() {
+    // Extract file ID from SharePoint URL
+    const fileIdMatch = this.url.match(/sourcedoc=%7B([^}]+)%7D/);
+    if (!fileIdMatch) {
+      throw new Error('Invalid Excel file URL format');
+    }
+    this.itemId = fileIdMatch[1];
+
+    // Verify token is still valid
+    const expiresOn = parseInt(Object.values(this.config.AccessToken)[0].expires_on);
+    if (Date.now() / 1000 >= expiresOn) {
+      throw new Error('Access token has expired. Please refresh your authentication.');
+    }
+  }
+
+  async writeData(sheetName: string, data: Record<string, any>) {
+    if (!this.accessToken || !this.itemId) {
+      throw new Error('Client not initialized');
+    }
+
+    const worksheetData = Object.entries(data).map(([key, value]) => [key, String(value)]);
+    
+    const graphEndpoint = `https://graph.microsoft.com/v1.0/drive/items/${this.itemId}/workbook/worksheets/${sheetName}/range(address='A:B')`;
+    
+    const response = await fetch(graphEndpoint, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${this.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        values: worksheetData
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(`Failed to update Excel file: ${error.message}`);
+    }
+
+    return response.json();
+  }
+}
+
 serve(async (req) => {
   console.log('Function called with method:', req.method);
 
@@ -30,63 +84,28 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // First, verify that the form exists
+    // First, verify that the form exists and get all its data
     console.log('Fetching form details for formId:', formId);
-    const { data: formData1, error: formCheckError } = await supabaseAdmin
+    const { data: form, error: formError } = await supabaseAdmin
       .from('forms')
       .select('*')
       .eq('id', formId)
-      .maybeSingle();
+      .single();
 
-    if (formCheckError) {
-      console.error('Error checking form existence:', formCheckError);
-      throw formCheckError;
-    }
-
-    if (!formData1) {
-      console.error('Form not found in database:', formId);
-      throw new Error(`Form with ID ${formId} not found in database`);
-    }
-
-    console.log('Form found:', formData1);
-
-    // Now fetch the user_id specifically
-    const { data: form, error: formError } = await supabaseAdmin
-      .from('forms')
-      .select('user_id')
-      .eq('id', formId)
-      .maybeSingle();
-
-    if (formError) {
+    if (formError || !form) {
       console.error('Error fetching form:', formError);
-      throw formError;
+      throw new Error(formError?.message || 'Form not found');
     }
 
-    console.log('Form data retrieved:', form);
-
-    if (!form?.user_id) {
-      console.error('Form found but has no user_id. Form data:', form);
+    if (!form.user_id) {
+      console.error('Form has no associated user_id');
       throw new Error('Form has no associated user_id');
     }
 
-    console.log('Fetching admin config for userId:', form.user_id);
-    const { data: adminUser, error: adminError } = await supabaseAdmin
-      .from('admin_users')
-      .select('id')
-      .eq('id', form.user_id)
-      .maybeSingle();
+    console.log('Form found:', form);
 
-    if (adminError) {
-      console.error('Error fetching admin user:', adminError);
-      throw adminError;
-    }
-
-    if (!adminUser?.id) {
-      console.error('Admin user not found for user_id:', form.user_id);
-      throw new Error('Admin configuration not found for this user');
-    }
-
-    const configPath = `${adminUser.id}/config.json`;
+    // Get the config file from storage
+    const configPath = `${form.user_id}/config.json`;
     console.log('Attempting to download config file from path:', configPath);
     
     const { data: configFile, error: configError } = await supabaseAdmin
@@ -94,13 +113,8 @@ serve(async (req) => {
       .from('configs')
       .download(configPath);
 
-    if (configError) {
+    if (configError || !configFile) {
       console.error('Error downloading config file:', configError);
-      throw configError;
-    }
-
-    if (!configFile) {
-      console.error('Config file not found at path:', configPath);
       throw new Error('Config file not found');
     }
 
@@ -110,6 +124,19 @@ serve(async (req) => {
     
     const config = JSON.parse(configText);
     console.log('Parsed config:', config);
+
+    // If we have an Excel URL, update the Excel file
+    if (form.excel_url) {
+      console.log('Initializing WorkbookClient...');
+      const wb = new WorkbookClient(config, form.excel_url);
+      
+      console.log('Initializing workbook connection...');
+      await wb.initialize();
+      
+      console.log('Writing data to Excel...');
+      await wb.writeData('Sheet1', formData);
+      console.log('Excel file updated successfully');
+    }
 
     // Save form response
     console.log('Saving form response...');
@@ -130,7 +157,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         message: 'Form response saved successfully',
-        config: 'Config processed successfully'
+        excelUpdated: !!form.excel_url
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
