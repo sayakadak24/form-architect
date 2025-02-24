@@ -1,4 +1,3 @@
-
 import { Button } from "@/components/ui/button";
 import { FormBuilder } from "@/components/FormBuilder";
 import { useState, useEffect } from "react";
@@ -113,22 +112,14 @@ const Index = () => {
 
       setUploading(true);
 
-      // First, upload the file to storage
-      const filePath = `config/${session.user.id}/${file.name}`;
+      // Always upload as config.json to ensure consistent naming
+      const filePath = `${session.user.id}/config.json`;
       const { error: uploadError } = await supabase.storage
         .from('configs')
         .upload(filePath, file, { upsert: true });
 
       if (uploadError) throw uploadError;
-
-      // Then update the admin_users table
-      const { error: updateError } = await supabase
-        .from('admin_users')
-        .update({ config_file_path: filePath })
-        .eq('id', session.user.id);
-
-      if (updateError) throw updateError;
-
+      
       toast.success("Config file uploaded successfully!");
     } catch (error: any) {
       console.error('Upload error:', error);
