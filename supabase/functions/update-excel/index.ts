@@ -10,6 +10,8 @@ const corsHeaders = {
 class WorkbookClient {
   private accessToken: string;
   private itemId: string | null = null;
+  private driveId: string | null = null;
+  private resourcePath: string | null = null;
 
   constructor(private config: any, private url: string) {
     // Extract the access token from the config
@@ -18,24 +20,76 @@ class WorkbookClient {
   }
 
   async initialize() {
-    // Extract file ID from SharePoint URL
-    const fileIdMatch = this.url.match(/sourcedoc=%7B([^}]+)%7D/);
-    if (!fileIdMatch) {
-      throw new Error('Invalid Excel file URL format');
+    console.log('Initializing WorkbookClient with URL:', this.url);
+    
+    try {
+      // Encode the sharing URL according to Microsoft's guidelines
+      // https://docs.microsoft.com/en-us/graph/api/shares-get?view=graph-rest-1.0&tabs=http#encoding-sharing-urls
+      const encodedUrl = this.encodeShareUrl(this.url);
+      console.log('Encoded share URL:', encodedUrl);
+      
+      // Get the drive item information
+      const graphEndpoint = `https://graph.microsoft.com/v1.0/shares/${encodedUrl}/driveItem`;
+      console.log('Requesting drive item from:', graphEndpoint);
+      
+      const response = await fetch(graphEndpoint, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Error getting drive item:', JSON.stringify(errorData, null, 2));
+        throw new Error(`Failed to get drive item: ${errorData.error?.message || 'Unknown error'}`);
+      }
+      
+      const driveItem = await response.json();
+      console.log('Drive item response:', JSON.stringify(driveItem, null, 2));
+      
+      // Extract drive ID and item ID
+      const { parentReference, id } = driveItem;
+      this.driveId = parentReference?.driveId;
+      this.itemId = id;
+      
+      if (!this.driveId || !this.itemId) {
+        throw new Error('Excel Share URL or DriveItem is Invalid - could not extract driveId or itemId');
+      }
+      
+      console.log(`DriveId: ${this.driveId}, ItemId: ${this.itemId}`);
+      
+      // Construct resource path
+      this.resourcePath = `/drives/${this.driveId}/items/${this.itemId}/workbook`;
+      console.log('Resource path:', this.resourcePath);
+    } catch (error) {
+      console.error('Error during initialization:', error);
+      throw error;
     }
-    this.itemId = fileIdMatch[1];
-
-    // Removed the token expiration check as requested
+  }
+  
+  private encodeShareUrl(url: string): string {
+    // Convert URL to base64
+    const encoder = new TextEncoder();
+    const data = encoder.encode(url);
+    const base64Url = btoa(String.fromCharCode(...data));
+    
+    // Format according to Microsoft's guidelines
+    let encodedUrl = base64Url.replace(/=/g, '').replace(/\//g, '_').replace(/\+/g, '-');
+    encodedUrl = 'u!' + encodedUrl;
+    
+    return encodedUrl;
   }
 
   async writeData(sheetName: string, data: Record<string, any>) {
-    if (!this.accessToken || !this.itemId) {
+    if (!this.accessToken || !this.itemId || !this.driveId) {
       throw new Error('Client not initialized');
     }
 
     const worksheetData = Object.entries(data).map(([key, value]) => [key, String(value)]);
     
-    const graphEndpoint = `https://graph.microsoft.com/v1.0/drive/items/${this.itemId}/workbook/worksheets/${sheetName}/range(address='A:B')`;
+    const graphEndpoint = `https://graph.microsoft.com/v1.0${this.resourcePath}/worksheets/${sheetName}/range(address='A:B')`;
     
     console.log(`Attempting to write to Excel. Endpoint: ${graphEndpoint}`);
     console.log(`Data to write:`, JSON.stringify(worksheetData, null, 2));
@@ -65,18 +119,17 @@ class WorkbookClient {
     }
   }
 
-  // New method to read data from Excel - similar to the Python code provided
   async readData(sheetName: string, rangeAddress?: string) {
-    if (!this.accessToken || !this.itemId) {
+    if (!this.accessToken || !this.itemId || !this.driveId) {
       throw new Error('Client not initialized');
     }
 
     // If no range is specified, we'll first get the used range
     let endpoint;
     if (!rangeAddress) {
-      endpoint = `https://graph.microsoft.com/v1.0/drive/items/${this.itemId}/workbook/worksheets/${sheetName}/usedRange`;
+      endpoint = `https://graph.microsoft.com/v1.0${this.resourcePath}/worksheets/${sheetName}/usedRange`;
     } else {
-      endpoint = `https://graph.microsoft.com/v1.0/drive/items/${this.itemId}/workbook/worksheets/${sheetName}/range(address='${rangeAddress}')`;
+      endpoint = `https://graph.microsoft.com/v1.0${this.resourcePath}/worksheets/${sheetName}/range(address='${rangeAddress}')`;
     }
 
     console.log(`Reading data from Excel. Endpoint: ${endpoint}`);
