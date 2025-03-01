@@ -25,11 +25,7 @@ class WorkbookClient {
     }
     this.itemId = fileIdMatch[1];
 
-    // Verify token is still valid
-    const expiresOn = parseInt(Object.values(this.config.AccessToken)[0].expires_on);
-    if (Date.now() / 1000 >= expiresOn) {
-      throw new Error('Access token has expired. Please refresh your authentication.');
-    }
+    // Removed the token expiration check as requested
   }
 
   async writeData(sheetName: string, data: Record<string, any>) {
