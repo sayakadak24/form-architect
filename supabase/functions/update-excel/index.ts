@@ -37,23 +37,72 @@ class WorkbookClient {
     
     const graphEndpoint = `https://graph.microsoft.com/v1.0/drive/items/${this.itemId}/workbook/worksheets/${sheetName}/range(address='A:B')`;
     
-    const response = await fetch(graphEndpoint, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${this.accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        values: worksheetData
-      }),
-    });
+    console.log(`Attempting to write to Excel. Endpoint: ${graphEndpoint}`);
+    console.log(`Data to write:`, JSON.stringify(worksheetData, null, 2));
+    
+    try {
+      const response = await fetch(graphEndpoint, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          values: worksheetData
+        }),
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(`Failed to update Excel file: ${error.message}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Excel API Error Response:', JSON.stringify(errorData, null, 2));
+        throw new Error(`Failed to update Excel file: ${errorData.error?.message || 'Unknown error'}`);
+      }
+
+      return response.json();
+    } catch (error) {
+      console.error('Error during Excel write operation:', error);
+      throw error;
+    }
+  }
+
+  // New method to read data from Excel - similar to the Python code provided
+  async readData(sheetName: string, rangeAddress?: string) {
+    if (!this.accessToken || !this.itemId) {
+      throw new Error('Client not initialized');
     }
 
-    return response.json();
+    // If no range is specified, we'll first get the used range
+    let endpoint;
+    if (!rangeAddress) {
+      endpoint = `https://graph.microsoft.com/v1.0/drive/items/${this.itemId}/workbook/worksheets/${sheetName}/usedRange`;
+    } else {
+      endpoint = `https://graph.microsoft.com/v1.0/drive/items/${this.itemId}/workbook/worksheets/${sheetName}/range(address='${rangeAddress}')`;
+    }
+
+    console.log(`Reading data from Excel. Endpoint: ${endpoint}`);
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Excel API Error Response:', JSON.stringify(errorData, null, 2));
+        throw new Error(`Failed to read Excel file: ${errorData.error?.message || 'Unknown error'}`);
+      }
+
+      const data = await response.json();
+      console.log('Read data from Excel:', JSON.stringify(data, null, 2));
+      return data;
+    } catch (error) {
+      console.error('Error during Excel read operation:', error);
+      throw error;
+    }
   }
 }
 
@@ -128,6 +177,16 @@ serve(async (req) => {
       
       console.log('Initializing workbook connection...');
       await wb.initialize();
+      
+      // Debug: First read the data to see what's currently in the workbook
+      try {
+        console.log('Reading current Excel data for debugging...');
+        const currentData = await wb.readData('Sheet1');
+        console.log('Current Excel data:', currentData);
+      } catch (readError) {
+        console.error('Error reading current Excel data (non-fatal):', readError);
+        // Continue even if read fails
+      }
       
       console.log('Writing data to Excel...');
       await wb.writeData('Sheet1', formData);
