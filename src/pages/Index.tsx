@@ -14,6 +14,7 @@ interface FormType {
   id: string;
   title: string;
   excel_url?: string;
+  sheet_name?: string;
   config_file_path?: string;
   created_at: string;
 }
@@ -259,6 +260,11 @@ const Index = () => {
                     <Link to={`/form/${form.id}`} className="flex-1">
                       <Button variant="secondary" className="w-full">
                         View Form
+                      </Button>
+                    </Link>
+                    <Link to={`/edit-form/${form.id}`}>
+                      <Button variant="outline" className="px-3">
+                        <Icons.pencil className="h-4 w-4" />
                       </Button>
                     </Link>
                     <Button

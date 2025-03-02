@@ -62,6 +62,8 @@ const ViewForm = () => {
             }));
           }}
           formId={formId}
+          needsValidation={form.needs_validation}
+          validationQuery={form.validation_query}
         />
       </main>
     </div>
