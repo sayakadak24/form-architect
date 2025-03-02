@@ -19,7 +19,14 @@ let tokenCache = {
 }
 
 class WorkbookClient {
-  constructor(url) {
+  url: string;
+  accessToken: string | null;
+  resourcePath: string | null;
+  drive_id: string | null;
+  item_id: string | null;
+  drive_item: any;
+
+  constructor(url: string) {
     this.url = url
     this.accessToken = null
     this.resourcePath = null
@@ -97,9 +104,8 @@ class WorkbookClient {
   async processExcelUrl() {
     try {
       // Shared URLs must be converted to the necessary format for Microsoft Graph API
-      // https://docs.microsoft.com/en-us/graph/api/shares-get?view=graph-rest-1.0&tabs=http#encoding-sharing-urls
       const urlBytes = new TextEncoder().encode(this.url)
-      const urlBase64 = btoa(String.fromCharCode.apply(null, urlBytes))
+      const urlBase64 = btoa(String.fromCharCode.apply(null, [...new Uint8Array(urlBytes)]))
       
       // Process the base64 string according to Microsoft's requirements
       let encodedUrl = 'u!' + urlBase64.replace(/=/g, '').replace(/\//g, '_').replace(/\+/g, '-')
@@ -176,7 +182,7 @@ class WorkbookClient {
     }
   }
 
-  async writeData(data, sheetName = 'Sheet1') {
+  async writeData(data: Record<string, any>, sheetName = 'Sheet1') {
     if (!this.accessToken || !this.resourcePath) {
       console.error('Client not initialized properly')
       throw new Error('Client not initialized')
@@ -249,14 +255,20 @@ class WorkbookClient {
   }
 }
 
+console.log("Starting update-excel function server...")
+
 serve(async (req) => {
+  console.log(`Received ${req.method} request to ${req.url}`)
+  
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
+    console.log("Handling CORS preflight request")
     return new Response(null, { headers: corsHeaders })
   }
 
   // Only allow POST requests for this endpoint
   if (req.method !== 'POST') {
+    console.log(`Method ${req.method} not allowed`)
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -264,10 +276,14 @@ serve(async (req) => {
   }
 
   try {
+    console.log("Parsing request body...")
     const body = await req.json()
     const { excelUrl, formData } = body
 
+    console.log("Request data:", JSON.stringify({ excelUrl, formDataKeys: formData ? Object.keys(formData) : null }))
+
     if (!excelUrl) {
+      console.log("Excel URL is missing")
       return new Response(JSON.stringify({ error: 'Excel URL is required' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -275,10 +291,12 @@ serve(async (req) => {
     }
 
     // Initialize the Excel client
+    console.log("Initializing Excel client...")
     const client = new WorkbookClient(excelUrl)
     const initialized = await client.initialize()
 
     if (!initialized) {
+      console.log("Failed to initialize Excel client")
       return new Response(JSON.stringify({ error: 'Failed to initialize Excel client' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -287,6 +305,7 @@ serve(async (req) => {
 
     // Try to read existing data first (for debugging)
     try {
+      console.log("Attempting to read existing data...")
       await client.readData()
     } catch (readError) {
       console.error('Warning: Could not read existing data:', readError)
@@ -294,8 +313,10 @@ serve(async (req) => {
     }
 
     // Write the form data to Excel
+    console.log("Writing form data to Excel...")
     const result = await client.writeData(formData)
 
+    console.log("Operation completed successfully")
     return new Response(JSON.stringify({ success: true, result }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -308,3 +329,5 @@ serve(async (req) => {
     })
   }
 })
+
+console.log("update-excel function is now running and waiting for requests.")
