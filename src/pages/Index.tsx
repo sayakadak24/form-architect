@@ -1,4 +1,3 @@
-
 import { Button } from "@/components/ui/button";
 import { FormBuilder } from "@/components/FormBuilder";
 import { useState, useEffect } from "react";
@@ -10,17 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Link } from 'react-router-dom';
 import { Icons } from "@/components/ui/icons";
 import { useNavigate } from "react-router-dom";
-import { Pencil } from "lucide-react";
 
 interface FormType {
   id: string;
   title: string;
   excel_url?: string;
-  sheet_name?: string;
   config_file_path?: string;
   created_at: string;
-  needs_validation?: boolean;
-  validation_query?: string;
 }
 
 const Index = () => {
@@ -34,33 +29,16 @@ const Index = () => {
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
-    // First, check if the session exists
-    const checkSession = async () => {
-      try {
-        const { data, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        setSession(data.session);
-        if (data.session?.user) {
-          checkIfAdmin(data.session.user.id);
-        }
-      } catch (error: any) {
-        console.error("Session check error:", error.message);
-        toast.error("Error checking session");
-      }
-    };
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      checkIfAdmin(session?.user?.id);
+    });
 
-    checkSession();
-
-    // Then set up the auth state change listener
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session?.user) {
-        checkIfAdmin(session.user.id);
-      } else {
-        setIsAdmin(false);
-      }
+      checkIfAdmin(session?.user?.id);
     });
 
     return () => subscription.unsubscribe();
@@ -78,19 +56,13 @@ const Index = () => {
       return;
     }
 
-    try {
-      const { data, error } = await supabase
-        .from('admin_users')
-        .select('id')
-        .eq('id', userId)
-        .maybeSingle();
+    const { data } = await supabase
+      .from('admin_users')
+      .select('id')
+      .eq('id', userId)
+      .single();
 
-      if (error) throw error;
-      setIsAdmin(!!data);
-    } catch (error: any) {
-      console.error("Admin check error:", error.message);
-      setIsAdmin(false);
-    }
+    setIsAdmin(!!data);
   };
 
   const fetchForms = async () => {
@@ -103,7 +75,6 @@ const Index = () => {
       if (error) throw error;
       setForms(data || []);
     } catch (error: any) {
-      console.error("Fetch forms error:", error.message);
       toast.error(error.message);
     } finally {
       setLoading(false);
@@ -113,15 +84,13 @@ const Index = () => {
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) throw error;
-      toast.success("Logged in successfully");
     } catch (error: any) {
-      console.error("Login error:", error.message);
       toast.error(error.message);
     }
   };
@@ -132,7 +101,6 @@ const Index = () => {
       if (error) throw error;
       toast.success("Logged out successfully");
     } catch (error: any) {
-      console.error("Logout error:", error.message);
       toast.error(error.message);
     }
   };
@@ -144,6 +112,7 @@ const Index = () => {
 
       setUploading(true);
 
+      // Always upload as config.json to ensure consistent naming
       const filePath = `${session.user.id}/config.json`;
       const { error: uploadError } = await supabase.storage
         .from('configs')
@@ -171,21 +140,10 @@ const Index = () => {
       toast.success("Form deleted successfully!");
       fetchForms();
     } catch (error: any) {
-      console.error("Delete form error:", error.message);
       toast.error(error.message);
     }
   };
 
-  // Check if the page is still loading
-  if (loading && session !== null) {
-    return (
-      <div className="min-h-screen bg-secondary flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
-      </div>
-    );
-  }
-
-  // If user is not logged in, show login form
   if (!session) {
     return (
       <div className="min-h-screen bg-secondary flex items-center justify-center">
@@ -225,7 +183,6 @@ const Index = () => {
     );
   }
 
-  // If user is logged in but not an admin
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-secondary flex items-center justify-center">
@@ -240,7 +197,6 @@ const Index = () => {
     );
   }
 
-  // Admin dashboard view
   return (
     <div className="min-h-screen bg-secondary">
       <header className="border-b bg-white/80 backdrop-blur-sm fixed top-0 w-full z-50">
@@ -303,11 +259,6 @@ const Index = () => {
                     <Link to={`/form/${form.id}`} className="flex-1">
                       <Button variant="secondary" className="w-full">
                         View Form
-                      </Button>
-                    </Link>
-                    <Link to={`/edit-form/${form.id}`}>
-                      <Button variant="outline" className="px-3">
-                        <Pencil className="h-4 w-4" />
                       </Button>
                     </Link>
                     <Button

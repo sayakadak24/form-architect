@@ -1,265 +1,402 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Cache for storing access tokens
-const tokenCache = new Map();
+const MICROSOFT_CLIENT_ID = Deno.env.get("MICROSOFT_CLIENT_ID");
+const MICROSOFT_TENANT_ID = "04ec3963-dddc-45fb-afb7-85fa38e19b99"; // OYO tenant ID
+const MICROSOFT_AUTH_ENDPOINT = `https://login.microsoftonline.com/${MICROSOFT_TENANT_ID}/oauth2/v2.0/token`;
+
+// Token cache (in memory). In production, persist this cache.
+let tokenCache: {
+  accessToken: string | null;
+  refreshToken: string | null;
+  expiresAt: number;
+} = {
+  accessToken: null,
+  refreshToken: null,
+  expiresAt: 0,
+};
+
+class WorkbookClient {
+  private accessToken: string;
+  private itemId: string | null = null;
+  private driveId: string | null = null;
+  private resourcePath: string | null = null;
+
+  constructor(private config: any, private url: string) {
+    // Extract the access token from the config
+    const accessTokenKey = Object.keys(config.AccessToken)[0];
+    this.accessToken = config.AccessToken[accessTokenKey].secret;
+    // If available, extract the refresh token and store in our token cache
+    if (config.RefreshToken) {
+      const refreshTokenKey = Object.keys(config.RefreshToken)[0];
+      if (config.RefreshToken[refreshTokenKey].secret) {
+        tokenCache.refreshToken = config.RefreshToken[refreshTokenKey].secret;
+      }
+    }
+    // Populate cache with the access token from config (if valid)
+    tokenCache.accessToken = this.accessToken;
+    // Here we assume the expires_on field exists in config (as a UNIX timestamp)
+    if (config.AccessToken[accessTokenKey].expires_on) {
+      tokenCache.expiresAt = parseInt(config.AccessToken[accessTokenKey].expires_on) * 1000;
+    }
+  }
+
+  async initialize() {
+    console.log("Initializing WorkbookClient with URL:", this.url);
+    try {
+      // Acquire a valid token (either cached, refreshed, or new)
+      await this.refreshAccessToken();
+      console.log("Access token obtained successfully");
+
+      // Process the Excel URL for Microsoft Graph API
+      await this.processExcelUrl();
+      console.log("Excel URL processed successfully");
+      return true;
+    } catch (error) {
+      console.error("Error during initialization:", error);
+      throw error;
+    }
+  }
+
+  async refreshAccessToken() {
+    const now = Date.now();
+
+    // Use cached token if valid
+    if (tokenCache.accessToken && tokenCache.expiresAt > now) {
+      console.log("Using cached access token");
+      this.accessToken = tokenCache.accessToken;
+      return;
+    }
+
+    // If refresh token is available, attempt silent token acquisition
+    if (tokenCache.refreshToken) {
+      console.log("Attempting silent token acquisition using refresh token");
+      try {
+        const response = await fetch(MICROSOFT_AUTH_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            client_id: MICROSOFT_CLIENT_ID ?? "",
+            scope: "https://graph.microsoft.com/.default",
+            grant_type: "refresh_token",
+            refresh_token: tokenCache.refreshToken,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Refresh token acquisition failed:", response.status, errorText);
+          // Fall through to client credentials flow if refresh fails
+        } else {
+          const data = await response.json();
+          tokenCache.accessToken = data.access_token;
+          // Update refresh token if provided; otherwise keep the existing one.
+          tokenCache.refreshToken = data.refresh_token || tokenCache.refreshToken;
+          tokenCache.expiresAt = now + data.expires_in * 1000 - 300000; // expire 5 minutes early
+          this.accessToken = data.access_token;
+          console.log("Access token refreshed silently using refresh token");
+          return;
+        }
+      } catch (error) {
+        console.error("Error during silent token acquisition:", error);
+      }
+    }
+
+    // Fallback: use client credentials flow (non-interactive)
+    console.log("Falling back to client credentials flow to acquire a new token");
+    try {
+      const response = await fetch(MICROSOFT_AUTH_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: MICROSOFT_CLIENT_ID ?? "",
+          scope: "https://graph.microsoft.com/.default",
+          grant_type: "client_credentials",
+        }),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Token acquisition via client credentials failed:", response.status, errorText);
+        throw new Error(`Failed to acquire access token: ${response.status} ${errorText}`);
+      }
+      const data = await response.json();
+      tokenCache.accessToken = data.access_token;
+      tokenCache.expiresAt = now + data.expires_in * 1000 - 300000;
+      this.accessToken = data.access_token;
+      console.log("New access token acquired using client credentials flow");
+    } catch (error) {
+      console.error("Error acquiring token via client credentials flow:", error);
+      throw new Error("Failed to refresh access token");
+    }
+  }
+
+  async processExcelUrl() {
+    try {
+      // Convert the sharing URL to a base64 encoded string per Microsoft guidelines
+      const encodedUrl = this.encodeShareUrl(this.url);
+      console.log("Encoded share URL:", encodedUrl);
+
+      // Get the drive item information
+      const graphEndpoint = `https://graph.microsoft.com/v1.0/shares/${encodedUrl}/driveItem`;
+      console.log("Requesting drive item from:", graphEndpoint);
+
+      const response = await fetch(graphEndpoint, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Error getting drive item:", JSON.stringify(errorData, null, 2));
+        throw new Error(`Failed to get drive item: ${errorData.error?.message || "Unknown error"}`);
+      }
+
+      const driveItem = await response.json();
+      console.log("Drive item response:", JSON.stringify(driveItem, null, 2));
+
+      // Extract drive ID and item ID
+      const { parentReference, id } = driveItem;
+      this.driveId = parentReference?.driveId;
+      this.itemId = id;
+
+      if (!this.driveId || !this.itemId) {
+        throw new Error("Excel Share URL or DriveItem is invalid - missing driveId or itemId");
+      }
+
+      console.log(`DriveId: ${this.driveId}, ItemId: ${this.itemId}`);
+
+      // Construct resource path
+      this.resourcePath = `/drives/${this.driveId}/items/${this.itemId}/workbook`;
+      console.log("Resource path:", this.resourcePath);
+    } catch (error) {
+      console.error("Error processing Excel URL:", error);
+      throw error;
+    }
+  }
+
+  private encodeShareUrl(url: string): string {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(url);
+    const base64Url = btoa(String.fromCharCode(...data));
+    let encodedUrl = base64Url.replace(/=/g, "").replace(/\//g, "_").replace(/\+/g, "-");
+    encodedUrl = "u!" + encodedUrl;
+    return encodedUrl;
+  }
+
+  async writeData(sheetName: string, data: Record<string, any>) {
+    if (!this.accessToken || !this.itemId || !this.driveId) {
+      throw new Error("Client not initialized");
+    }
+
+    try {
+      // Ensure token is still valid before writing
+      await this.refreshAccessToken();
+
+      const worksheetData = Object.entries(data).map(([key, value]) => [key, String(value)]);
+      const rowCount = worksheetData.length;
+      if (rowCount === 0) {
+        console.log("No data to write");
+        return { success: true, message: "No data to write" };
+      }
+
+      const rangeAddress = `A1:B${rowCount}`;
+      console.log(`Using range address: ${rangeAddress} for ${rowCount} rows of data`);
+
+      const graphEndpoint = `https://graph.microsoft.com/v1.0${this.resourcePath}/worksheets/${sheetName}/range(address='${rangeAddress}')`;
+      console.log("Attempting to write to Excel. Endpoint:", graphEndpoint);
+      console.log("Data to write:", JSON.stringify(worksheetData, null, 2));
+
+      const requestBody = { values: worksheetData };
+
+      const response = await fetch(graphEndpoint, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Excel API Error Response:", JSON.stringify(errorData, null, 2));
+        throw new Error(`Failed to update Excel file: ${errorData.error?.message || "Unknown error"}`);
+      }
+
+      const responseData = await response.json();
+      console.log("Excel write operation successful:", JSON.stringify(responseData, null, 2));
+      return responseData;
+    } catch (error) {
+      console.error("Error during Excel write operation:", error);
+      throw error;
+    }
+  }
+
+  async readData(sheetName: string, rangeAddress?: string) {
+    if (!this.accessToken || !this.itemId || !this.driveId) {
+      throw new Error("Client not initialized");
+    }
+
+    let endpoint: string;
+    if (!rangeAddress) {
+      endpoint = `https://graph.microsoft.com/v1.0${this.resourcePath}/worksheets/${sheetName}/usedRange`;
+    } else {
+      endpoint = `https://graph.microsoft.com/v1.0${this.resourcePath}/worksheets/${sheetName}/range(address='${rangeAddress}')`;
+    }
+
+    console.log("Reading data from Excel. Endpoint:", endpoint);
+
+    try {
+      const response = await fetch(endpoint, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Excel API Error Response:", JSON.stringify(errorData, null, 2));
+        throw new Error(`Failed to read Excel file: ${errorData.error?.message || "Unknown error"}`);
+      }
+
+      const data = await response.json();
+      console.log("Read data from Excel:", JSON.stringify(data, null, 2));
+      return data;
+    } catch (error) {
+      console.error("Error during Excel read operation:", error);
+      throw error;
+    }
+  }
+}
 
 serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
+  console.log("Function called with method:", req.method);
+
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log("Excel update function started");
+    const body = await req.json();
+    console.log("Received request body:", body);
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error("Missing Supabase URL or key");
+    const { formData, formId } = body;
+
+    if (!formId) {
+      throw new Error("Form ID is required");
     }
-    
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    const { formData, formId } = await req.json();
-    
-    console.log(`Received form data for form ID: ${formId}`);
-    
-    // Fetch the form to get the Excel URL and sheet name
-    const { data: formDetails, error: formError } = await supabase
-      .from('forms')
-      .select('excel_url, sheet_name')
-      .eq('id', formId)
-      .single();
-    
-    if (formError) {
-      throw new Error(`Failed to fetch form details: ${formError.message}`);
-    }
-    
-    if (!formDetails.excel_url) {
-      throw new Error("No Excel URL specified for this form");
-    }
-    
-    const excelUrl = formDetails.excel_url;
-    const sheetName = formDetails.sheet_name || 'Sheet1';
-    
-    console.log(`Excel URL: ${excelUrl}`);
-    console.log(`Sheet name: ${sheetName}`);
-    
-    // Parse the Excel URL to extract necessary information
-    const urlInfo = parseExcelUrl(excelUrl);
-    
-    if (!urlInfo) {
-      throw new Error("Invalid Excel URL format");
-    }
-    
-    console.log(`Parsed URL info: ${JSON.stringify(urlInfo)}`);
-    
-    // Get or refresh access token
-    const token = await getAccessToken();
-    
-    console.log("Access token obtained");
-    
-    // Format the data for Excel
-    const formattedData = formatDataForExcel(formData);
-    
-    console.log(`Formatted data: ${JSON.stringify(formattedData)}`);
-    
-    // Write data to Excel
-    await writeData(urlInfo, formattedData, token, sheetName);
-    
-    console.log("Data successfully written to Excel");
-    
-    return new Response(
-      JSON.stringify({ success: true }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+
+    console.log("Initializing Supabase client...");
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
-    
-  } catch (error) {
-    console.error(`Error: ${error.message}`);
-    
+
+    console.log("Fetching form details for formId:", formId);
+    const { data: form, error: formError } = await supabaseAdmin
+      .from("forms")
+      .select("*")
+      .eq("id", formId)
+      .single();
+
+    if (formError || !form) {
+      console.error("Error fetching form:", formError);
+      throw new Error(formError?.message || "Form not found");
+    }
+
+    if (!form.user_id) {
+      console.error("Form has no associated user_id");
+      throw new Error("Form has no associated user_id");
+    }
+
+    console.log("Form found:", form);
+
+    const configPath = `${form.user_id}/config.json`;
+    console.log("Attempting to download config file from path:", configPath);
+
+    const { data: configFile, error: configError } = await supabaseAdmin.storage
+      .from("configs")
+      .download(configPath);
+
+    if (configError || !configFile) {
+      console.error("Error downloading config file:", configError);
+      throw new Error("Config file not found");
+    }
+
+    console.log("Config file downloaded successfully");
+    const configText = await configFile.text();
+    console.log("Config file contents:", configText);
+
+    const config = JSON.parse(configText);
+    console.log("Parsed config:", config);
+
+    if (form.excel_url) {
+      console.log("Initializing WorkbookClient...");
+      const wb = new WorkbookClient(config, form.excel_url);
+
+      console.log("Initializing workbook connection...");
+      await wb.initialize();
+
+      // For debugging, attempt to read current Excel data
+      try {
+        console.log("Reading current Excel data for debugging...");
+        const currentData = await wb.readData("Sheet1");
+        console.log("Current Excel data:", currentData);
+      } catch (readError) {
+        console.error("Error reading current Excel data (non-fatal):", readError);
+      }
+
+      console.log("Writing data to Excel...");
+      await wb.writeData("Sheet1", formData);
+      console.log("Excel file updated successfully");
+    }
+
+    console.log("Saving form response...");
+    const { error: responseError } = await supabaseAdmin
+      .from("form_responses")
+      .insert({
+        form_id: formId,
+        responses: formData,
+      });
+
+    if (responseError) {
+      console.error("Error saving form response:", responseError);
+      throw responseError;
+    }
+
+    console.log("Form response saved successfully");
+
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error.message 
+      JSON.stringify({
+        message: "Form response saved successfully",
+        excelUpdated: !!form.excel_url,
       }),
-      { 
-        status: 400, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      }
+    );
+  } catch (error) {
+    console.error("Error processing form submission:", error);
+    return new Response(
+      JSON.stringify({
+        error: error.message,
+        details: "Check the function logs for more information",
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
       }
     );
   }
 });
-
-// Parse the Excel URL to extract drive ID and item ID
-function parseExcelUrl(url: string) {
-  try {
-    console.log(`Parsing URL: ${url}`);
-    
-    // Handle OneDrive shared URLs
-    if (url.includes("1drv.ms") || url.includes("sharepoint.com")) {
-      // For shared URLs, we would need to make an additional API call to resolve them
-      console.log("Shared URL detected, would need additional resolution");
-      throw new Error("Shared OneDrive links are not supported yet");
-    }
-    
-    // Handle direct OneDrive URLs
-    if (url.includes("/personal/")) {
-      const matches = url.match(/drive\/items\/([^/?]+)/i);
-      if (matches && matches[1]) {
-        const itemId = matches[1];
-        // Simplified, in reality you'd need to also extract the drive ID
-        return { driveId: "me", itemId };
-      }
-    }
-    
-    // Handle OneDrive for Business URLs
-    const driveMatch = url.match(/\/drives\/([^/]+)/i);
-    const itemMatch = url.match(/\/items\/([^/?.]+)/i);
-    
-    if (driveMatch && driveMatch[1] && itemMatch && itemMatch[1]) {
-      return {
-        driveId: driveMatch[1],
-        itemId: itemMatch[1]
-      };
-    }
-    
-    throw new Error("Could not parse Excel URL format");
-  } catch (error) {
-    console.error(`Error parsing Excel URL: ${error.message}`);
-    return null;
-  }
-}
-
-// Format form data into a 2D array for Excel
-function formatDataForExcel(formData: Record<string, any>): string[][] {
-  try {
-    // Convert form data to array format for Excel
-    // First row is the headers (field IDs)
-    // Second row is the values
-    const headers = Object.keys(formData);
-    const values = headers.map(key => {
-      const value = formData[key];
-      // Handle different types of values (arrays, objects, etc.)
-      if (Array.isArray(value)) {
-        return value.join(", ");
-      } else if (value instanceof Date) {
-        return value.toISOString();
-      } else if (typeof value === "object" && value !== null) {
-        return JSON.stringify(value);
-      }
-      return value?.toString() || "";
-    });
-    
-    return [headers, values];
-  } catch (error) {
-    console.error(`Error formatting data: ${error.message}`);
-    throw error;
-  }
-}
-
-// Get or refresh Microsoft Graph API access token
-async function getAccessToken(): Promise<string> {
-  try {
-    // Check if we have a valid cached token
-    const cachedToken = tokenCache.get("msGraphToken");
-    if (cachedToken && cachedToken.expiresAt > Date.now()) {
-      console.log("Using cached token");
-      return cachedToken.token;
-    }
-    
-    console.log("Getting new access token");
-    
-    // In production, you would use proper OAuth flow with MSAL
-    // This is a simplified example using client credentials flow
-    const tenantId = "common"; // or your specific tenant ID
-    const clientId = Deno.env.get("MICROSOFT_CLIENT_ID");
-    
-    if (!clientId) {
-      throw new Error("Microsoft client ID not configured");
-    }
-    
-    // In a real implementation, you'd use a proper authentication library
-    // and implement secure token acquisition and refresh
-    
-    // Simulate getting a token (in production, you'd make an actual OAuth request)
-    const token = "simulated_token_" + Math.random().toString(36).substring(2);
-    
-    // Cache the token with an expiration time (1 hour)
-    tokenCache.set("msGraphToken", {
-      token,
-      expiresAt: Date.now() + 3600000, // 1 hour
-    });
-    
-    return token;
-  } catch (error) {
-    console.error(`Error getting access token: ${error.message}`);
-    throw error;
-  }
-}
-
-// Write data to Excel using Microsoft Graph API
-async function writeData(
-  urlInfo: { driveId: string; itemId: string }, 
-  data: string[][], 
-  token: string,
-  sheetName: string
-): Promise<void> {
-  try {
-    console.log(`Writing data to sheet: ${sheetName}`);
-    
-    // Calculate the range based on data dimensions
-    const rows = data.length;
-    const cols = data[0].length;
-    const endCol = String.fromCharCode(64 + cols); // Convert column number to letter (e.g., 1 -> A, 2 -> B)
-    const range = `A1:${endCol}${rows}`;
-    
-    console.log(`Using range: ${range}`);
-    
-    const url = `https://graph.microsoft.com/v1.0/drives/${urlInfo.driveId}/items/${urlInfo.itemId}/workbook/worksheets/${sheetName}/range(address='${range}')`;
-    
-    console.log(`API URL: ${url}`);
-    
-    // Prepare the request body
-    const body = {
-      values: data
-    };
-    
-    // Make the API request
-    const response = await fetch(url, {
-      method: "PATCH",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(body)
-    });
-    
-    // Check for errors
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`API error (${response.status}): ${errorText}`);
-      
-      // Handle token expiration
-      if (response.status === 401) {
-        // Clear cached token
-        tokenCache.delete("msGraphToken");
-        throw new Error("Authentication token expired");
-      }
-      
-      throw new Error(`Failed to update Excel file: ${response.status} ${response.statusText}`);
-    }
-    
-    console.log("Excel update successful");
-    
-  } catch (error) {
-    console.error(`Error writing data: ${error.message}`);
-    throw error;
-  }
-}

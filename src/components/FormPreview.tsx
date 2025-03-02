@@ -21,22 +21,11 @@ interface FormPreviewProps {
   responses?: Record<string, any>;
   onResponseChange?: (id: string, value: any) => void;
   formId?: string;
-  needsValidation?: boolean;
-  validationQuery?: string;
 }
 
-export const FormPreview = ({ 
-  elements, 
-  responses = {}, 
-  onResponseChange, 
-  formId,
-  needsValidation = false,
-  validationQuery = ""
-}: FormPreviewProps) => {
+export const FormPreview = ({ elements, responses = {}, onResponseChange, formId }: FormPreviewProps) => {
   const [localResponses, setLocalResponses] = useState<Record<string, any>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isValidating, setIsValidating] = useState(false);
-  const [validationResults, setValidationResults] = useState<Record<string, boolean>>({});
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,48 +42,6 @@ export const FormPreview = ({
       return;
     }
 
-    // If validation is needed and we have a validation query
-    if (needsValidation && validationQuery) {
-      setIsValidating(true);
-      
-      try {
-        const currentResponses = responses || localResponses;
-        
-        // Call validation edge function
-        const { data, error } = await supabase.functions.invoke('validate-form-data', {
-          body: {
-            formData: currentResponses,
-            validationQuery
-          }
-        });
-
-        if (error) throw error;
-        
-        // If validation failed
-        if (data && data.validationErrors && Object.keys(data.validationErrors).length > 0) {
-          setValidationResults(data.validationErrors);
-          
-          // Show validation errors
-          const errorMessages = Object.entries(data.validationErrors)
-            .filter(([_, isValid]) => !isValid)
-            .map(([field]) => {
-              const element = elements.find(el => el.id === field);
-              return element ? element.label : field;
-            });
-          
-          toast.error(`Validation failed for the following fields: ${errorMessages.join(', ')}`);
-          setIsValidating(false);
-          return;
-        }
-        
-        setValidationResults({});
-      } catch (error: any) {
-        toast.error("Validation error: " + error.message);
-        setIsValidating(false);
-        return;
-      }
-    }
-
     setIsSubmitting(true);
 
     try {
@@ -104,9 +51,7 @@ export const FormPreview = ({
       const { error: functionError } = await supabase.functions.invoke('update-excel', {
         body: {
           formData: currentResponses,
-          formId: formId,
-          // Include the sheet name in the request
-          sheetName: null // This will be fetched by the edge function from the form data
+          formId: formId
         }
       });
 
@@ -125,20 +70,10 @@ export const FormPreview = ({
       toast.error(error.message);
     } finally {
       setIsSubmitting(false);
-      setIsValidating(false);
     }
   };
 
   const handleResponseChange = (id: string, value: any) => {
-    // Clear validation results when a field is changed
-    if (validationResults[id]) {
-      setValidationResults(prev => {
-        const updated = {...prev};
-        delete updated[id];
-        return updated;
-      });
-    }
-    
     if (onResponseChange) {
       onResponseChange(id, value);
     } else {
@@ -161,25 +96,21 @@ export const FormPreview = ({
           ) : (
             <>
               {elements.map((element) => (
-                <div key={element.id} className={`${validationResults[element.id] === false ? 'border-red-500 border rounded-md p-2' : ''}`}>
-                  <FormElement
-                    element={element}
-                    isPreview={true}
-                    allElements={elements}
-                    responses={responses || localResponses}
-                    onResponseChange={handleResponseChange}
-                  />
-                  {validationResults[element.id] === false && (
-                    <p className="text-red-500 text-sm mt-1">This field failed validation.</p>
-                  )}
-                </div>
+                <FormElement
+                  key={element.id}
+                  element={element}
+                  isPreview={true}
+                  allElements={elements}
+                  responses={responses || localResponses}
+                  onResponseChange={handleResponseChange}
+                />
               ))}
               <Button 
                 type="submit" 
                 className="w-full"
-                disabled={isSubmitting || isValidating}
+                disabled={isSubmitting}
               >
-                {isValidating ? "Validating..." : isSubmitting ? "Submitting..." : "Submit Form"}
+                {isSubmitting ? "Submitting..." : "Submit Form"}
               </Button>
             </>
           )}

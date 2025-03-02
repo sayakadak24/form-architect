@@ -66,12 +66,9 @@ export type Database = {
           id: string
           microsoft_drive_id: string | null
           microsoft_file_id: string | null
-          needs_validation: boolean | null
-          sheet_name: string | null
           title: string
           updated_at: string
           user_id: string | null
-          validation_query: string | null
         }
         Insert: {
           config_file_path?: string | null
@@ -82,12 +79,9 @@ export type Database = {
           id?: string
           microsoft_drive_id?: string | null
           microsoft_file_id?: string | null
-          needs_validation?: boolean | null
-          sheet_name?: string | null
           title: string
           updated_at?: string
           user_id?: string | null
-          validation_query?: string | null
         }
         Update: {
           config_file_path?: string | null
@@ -98,12 +92,9 @@ export type Database = {
           id?: string
           microsoft_drive_id?: string | null
           microsoft_file_id?: string | null
-          needs_validation?: boolean | null
-          sheet_name?: string | null
           title?: string
           updated_at?: string
           user_id?: string | null
-          validation_query?: string | null
         }
         Relationships: []
       }
