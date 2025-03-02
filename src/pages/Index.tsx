@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Link } from 'react-router-dom';
 import { Icons } from "@/components/ui/icons";
 import { useNavigate } from "react-router-dom";
+import { Pencil } from "lucide-react";
 
 interface FormType {
   id: string;
@@ -113,7 +114,6 @@ const Index = () => {
 
       setUploading(true);
 
-      // Always upload as config.json to ensure consistent naming
       const filePath = `${session.user.id}/config.json`;
       const { error: uploadError } = await supabase.storage
         .from('configs')
@@ -264,7 +264,7 @@ const Index = () => {
                     </Link>
                     <Link to={`/edit-form/${form.id}`}>
                       <Button variant="outline" className="px-3">
-                        <Icons.pencil className="h-4 w-4" />
+                        <Pencil className="h-4 w-4" />
                       </Button>
                     </Link>
                     <Button

@@ -10,6 +10,19 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 
+// Define the type for form data
+interface FormData {
+  id: string;
+  title: string;
+  description?: string | null;
+  excel_url?: string | null;
+  sheet_name?: string | null;
+  needs_validation?: boolean | null;
+  validation_query?: string | null;
+  elements: any[];
+  user_id?: string | null;
+}
+
 const CreateForm = () => {
   const navigate = useNavigate();
   const { formId } = useParams();
@@ -21,7 +34,7 @@ const CreateForm = () => {
   const [sheetName, setSheetName] = useState("Sheet1");
   const [needsValidation, setNeedsValidation] = useState(false);
   const [validationQuery, setValidationQuery] = useState("");
-  const [elements, setElements] = useState([]);
+  const [elements, setElements] = useState<any[]>([]);
   const [loading, setLoading] = useState(isEditing);
 
   useEffect(() => {
@@ -40,13 +53,16 @@ const CreateForm = () => {
 
       if (error) throw error;
 
-      setTitle(data.title || "");
-      setDescription(data.description || "");
-      setExcelUrl(data.excel_url || "");
-      setSheetName(data.sheet_name || "Sheet1");
-      setNeedsValidation(data.needs_validation || false);
-      setValidationQuery(data.validation_query || "");
-      setElements(data.elements || []);
+      // Cast the data to ensure TypeScript recognizes the properties
+      const formData = data as FormData;
+
+      setTitle(formData.title || "");
+      setDescription(formData.description || "");
+      setExcelUrl(formData.excel_url || "");
+      setSheetName(formData.sheet_name || "Sheet1");
+      setNeedsValidation(formData.needs_validation || false);
+      setValidationQuery(formData.validation_query || "");
+      setElements(formData.elements || []);
       setLoading(false);
     } catch (error: any) {
       toast.error("Error loading form: " + error.message);
