@@ -87,23 +87,38 @@ class WorkbookClient {
       throw new Error('Client not initialized');
     }
 
-    const worksheetData = Object.entries(data).map(([key, value]) => [key, String(value)]);
-    
-    const graphEndpoint = `https://graph.microsoft.com/v1.0${this.resourcePath}/worksheets/${sheetName}/range(address='A:B')`;
-    
-    console.log(`Attempting to write to Excel. Endpoint: ${graphEndpoint}`);
-    console.log(`Data to write:`, JSON.stringify(worksheetData, null, 2));
-    
     try {
+      // Convert the data object to array format expected by Excel API
+      const worksheetData = Object.entries(data).map(([key, value]) => [key, String(value)]);
+      
+      // Get row count to determine exact range to update
+      const rowCount = worksheetData.length;
+      if (rowCount === 0) {
+        console.log('No data to write');
+        return { success: true, message: 'No data to write' };
+      }
+      
+      // Specify an exact range rather than using A:B (which can cause errors)
+      const rangeAddress = `A1:B${rowCount}`;
+      console.log(`Using range address: ${rangeAddress} for ${rowCount} rows of data`);
+      
+      const graphEndpoint = `https://graph.microsoft.com/v1.0${this.resourcePath}/worksheets/${sheetName}/range(address='${rangeAddress}')`;
+      
+      console.log(`Attempting to write to Excel. Endpoint: ${graphEndpoint}`);
+      console.log(`Data to write:`, JSON.stringify(worksheetData, null, 2));
+      
+      // Format the data exactly as required by Microsoft Graph API
+      const requestBody = {
+        values: worksheetData
+      };
+      
       const response = await fetch(graphEndpoint, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${this.accessToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          values: worksheetData
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -112,7 +127,9 @@ class WorkbookClient {
         throw new Error(`Failed to update Excel file: ${errorData.error?.message || 'Unknown error'}`);
       }
 
-      return response.json();
+      const responseData = await response.json();
+      console.log('Excel write operation successful:', JSON.stringify(responseData, null, 2));
+      return responseData;
     } catch (error) {
       console.error('Error during Excel write operation:', error);
       throw error;
