@@ -1,3 +1,4 @@
+
 import { Button } from "@/components/ui/button";
 import { FormBuilder } from "@/components/FormBuilder";
 import { useState, useEffect } from "react";
@@ -18,6 +19,8 @@ interface FormType {
   sheet_name?: string;
   config_file_path?: string;
   created_at: string;
+  needs_validation?: boolean;
+  validation_query?: string;
 }
 
 const Index = () => {
@@ -31,16 +34,33 @@ const Index = () => {
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      checkIfAdmin(session?.user?.id);
-    });
+    // First, check if the session exists
+    const checkSession = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        setSession(data.session);
+        if (data.session?.user) {
+          checkIfAdmin(data.session.user.id);
+        }
+      } catch (error: any) {
+        console.error("Session check error:", error.message);
+        toast.error("Error checking session");
+      }
+    };
 
+    checkSession();
+
+    // Then set up the auth state change listener
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      checkIfAdmin(session?.user?.id);
+      if (session?.user) {
+        checkIfAdmin(session.user.id);
+      } else {
+        setIsAdmin(false);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -58,13 +78,19 @@ const Index = () => {
       return;
     }
 
-    const { data } = await supabase
-      .from('admin_users')
-      .select('id')
-      .eq('id', userId)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('admin_users')
+        .select('id')
+        .eq('id', userId)
+        .maybeSingle();
 
-    setIsAdmin(!!data);
+      if (error) throw error;
+      setIsAdmin(!!data);
+    } catch (error: any) {
+      console.error("Admin check error:", error.message);
+      setIsAdmin(false);
+    }
   };
 
   const fetchForms = async () => {
@@ -77,6 +103,7 @@ const Index = () => {
       if (error) throw error;
       setForms(data || []);
     } catch (error: any) {
+      console.error("Fetch forms error:", error.message);
       toast.error(error.message);
     } finally {
       setLoading(false);
@@ -86,13 +113,15 @@ const Index = () => {
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) throw error;
+      toast.success("Logged in successfully");
     } catch (error: any) {
+      console.error("Login error:", error.message);
       toast.error(error.message);
     }
   };
@@ -103,6 +132,7 @@ const Index = () => {
       if (error) throw error;
       toast.success("Logged out successfully");
     } catch (error: any) {
+      console.error("Logout error:", error.message);
       toast.error(error.message);
     }
   };
@@ -141,10 +171,21 @@ const Index = () => {
       toast.success("Form deleted successfully!");
       fetchForms();
     } catch (error: any) {
+      console.error("Delete form error:", error.message);
       toast.error(error.message);
     }
   };
 
+  // Check if the page is still loading
+  if (loading && session !== null) {
+    return (
+      <div className="min-h-screen bg-secondary flex items-center justify-center">
+        <div className="text-xl">Loading...</div>
+      </div>
+    );
+  }
+
+  // If user is not logged in, show login form
   if (!session) {
     return (
       <div className="min-h-screen bg-secondary flex items-center justify-center">
@@ -184,6 +225,7 @@ const Index = () => {
     );
   }
 
+  // If user is logged in but not an admin
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-secondary flex items-center justify-center">
@@ -198,6 +240,7 @@ const Index = () => {
     );
   }
 
+  // Admin dashboard view
   return (
     <div className="min-h-screen bg-secondary">
       <header className="border-b bg-white/80 backdrop-blur-sm fixed top-0 w-full z-50">
