@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 
@@ -91,7 +92,9 @@ class WorkbookClient {
         if (!response.ok) {
           const errorText = await response.text();
           console.error("Refresh token acquisition failed:", response.status, errorText);
-          // Fall through to client credentials flow if refresh fails
+          // Invalidate the refresh token since it's no longer valid
+          tokenCache.refreshToken = null;
+          // Fall through to client credentials flow
         } else {
           const data = await response.json();
           tokenCache.accessToken = data.access_token;
@@ -104,11 +107,13 @@ class WorkbookClient {
         }
       } catch (error) {
         console.error("Error during silent token acquisition:", error);
+        // Invalidate the refresh token on error
+        tokenCache.refreshToken = null;
       }
     }
 
     // Fallback: use client credentials flow (non-interactive)
-    console.log("Falling back to client credentials flow to acquire a new token");
+    console.log("Using client credentials flow to acquire a new token");
     try {
       const response = await fetch(MICROSOFT_AUTH_ENDPOINT, {
         method: "POST",
@@ -117,6 +122,8 @@ class WorkbookClient {
           client_id: MICROSOFT_CLIENT_ID ?? "",
           scope: "https://graph.microsoft.com/.default",
           grant_type: "client_credentials",
+          // Add client_secret if available and required
+          // client_secret: MICROSOFT_CLIENT_SECRET ?? "",
         }),
       });
       if (!response.ok) {
@@ -210,7 +217,11 @@ class WorkbookClient {
       const rangeAddress = `A1:B${rowCount}`;
       console.log(`Using range address: ${rangeAddress} for ${rowCount} rows of data`);
 
-      const graphEndpoint = `https://graph.microsoft.com/v1.0${this.resourcePath}/worksheets/${sheetName}/range(address='${rangeAddress}')`;
+      // Use the provided sheet name or fall back to "Sheet1"
+      const targetSheet = sheetName || "Sheet1";
+      console.log(`Writing to sheet: ${targetSheet}`);
+
+      const graphEndpoint = `https://graph.microsoft.com/v1.0${this.resourcePath}/worksheets/${targetSheet}/range(address='${rangeAddress}')`;
       console.log("Attempting to write to Excel. Endpoint:", graphEndpoint);
       console.log("Data to write:", JSON.stringify(worksheetData, null, 2));
 
@@ -245,11 +256,15 @@ class WorkbookClient {
       throw new Error("Client not initialized");
     }
 
+    // Use the provided sheet name or fall back to "Sheet1"
+    const targetSheet = sheetName || "Sheet1";
+    console.log(`Reading from sheet: ${targetSheet}`);
+
     let endpoint: string;
     if (!rangeAddress) {
-      endpoint = `https://graph.microsoft.com/v1.0${this.resourcePath}/worksheets/${sheetName}/usedRange`;
+      endpoint = `https://graph.microsoft.com/v1.0${this.resourcePath}/worksheets/${targetSheet}/usedRange`;
     } else {
-      endpoint = `https://graph.microsoft.com/v1.0${this.resourcePath}/worksheets/${sheetName}/range(address='${rangeAddress}')`;
+      endpoint = `https://graph.microsoft.com/v1.0${this.resourcePath}/worksheets/${targetSheet}/range(address='${rangeAddress}')`;
     }
 
     console.log("Reading data from Excel. Endpoint:", endpoint);
@@ -349,16 +364,19 @@ serve(async (req) => {
 
       // For debugging, attempt to read current Excel data
       try {
-        console.log("Reading current Excel data for debugging...");
-        const currentData = await wb.readData("Sheet1");
+        const sheetName = form.sheet_name || "Sheet1";
+        console.log(`Reading current Excel data from sheet ${sheetName} for debugging...`);
+        const currentData = await wb.readData(sheetName);
         console.log("Current Excel data:", currentData);
       } catch (readError) {
         console.error("Error reading current Excel data (non-fatal):", readError);
       }
 
       console.log("Writing data to Excel...");
-      await wb.writeData("Sheet1", formData);
-      console.log("Excel file updated successfully");
+      // Use the sheet_name from the form or fall back to Sheet1
+      const sheetName = form.sheet_name || "Sheet1";
+      await wb.writeData(sheetName, formData);
+      console.log(`Excel file updated successfully on sheet: ${sheetName}`);
     }
 
     console.log("Saving form response...");

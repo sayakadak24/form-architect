@@ -1,3 +1,4 @@
+
 import { Button } from "@/components/ui/button";
 import { FormBuilder } from "@/components/FormBuilder";
 import { useState, useEffect } from "react";
@@ -9,13 +10,17 @@ import { Input } from "@/components/ui/input";
 import { Link } from 'react-router-dom';
 import { Icons } from "@/components/ui/icons";
 import { useNavigate } from "react-router-dom";
+import { Pencil } from "lucide-react";
 
 interface FormType {
   id: string;
   title: string;
   excel_url?: string;
+  sheet_name?: string;
   config_file_path?: string;
   created_at: string;
+  needs_validation?: boolean;
+  validation_query?: string;
 }
 
 const Index = () => {
@@ -27,18 +32,49 @@ const Index = () => {
   const [password, setPassword] = useState("");
   const [session, setSession] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      checkIfAdmin(session?.user?.id);
-    });
+    const checkSession = async () => {
+      try {
+        setLoading(true);
+        console.log("Checking session...");
+        const { data, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error("Session error:", error);
+          setError(`Authentication error: ${error.message}`);
+          setLoading(false);
+          return;
+        }
+        
+        console.log("Session data:", data.session);
+        setSession(data.session);
+        
+        if (data.session?.user?.id) {
+          await checkIfAdmin(data.session.user.id);
+        } else {
+          setIsAdmin(false);
+          setLoading(false);
+        }
+      } catch (err: any) {
+        console.error("Unexpected error during session check:", err);
+        setError(`Unexpected error: ${err.message}`);
+        setLoading(false);
+      }
+    };
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    checkSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log("Auth state changed:", _event, session?.user?.id);
       setSession(session);
-      checkIfAdmin(session?.user?.id);
+      if (session?.user?.id) {
+        checkIfAdmin(session.user.id);
+      } else {
+        setIsAdmin(false);
+        setLoading(false);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -50,31 +86,57 @@ const Index = () => {
     }
   }, [isAdmin]);
 
-  const checkIfAdmin = async (userId: string | undefined) => {
-    if (!userId) {
+  const checkIfAdmin = async (userId: string) => {
+    try {
+      console.log("Checking if user is admin:", userId);
+      if (!userId) {
+        setIsAdmin(false);
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('admin_users')
+        .select('id')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Admin check error:", error);
+        setError(`Database error: ${error.message}`);
+        setIsAdmin(false);
+      } else {
+        console.log("Admin check result:", data);
+        setIsAdmin(!!data);
+      }
+    } catch (err: any) {
+      console.error("Unexpected error during admin check:", err);
+      setError(`Unexpected error: ${err.message}`);
       setIsAdmin(false);
-      return;
+    } finally {
+      setLoading(false);
     }
-
-    const { data } = await supabase
-      .from('admin_users')
-      .select('id')
-      .eq('id', userId)
-      .single();
-
-    setIsAdmin(!!data);
   };
 
   const fetchForms = async () => {
     try {
+      console.log("Fetching forms...");
+      setLoading(true);
       const { data, error } = await supabase
         .from('forms')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error fetching forms:", error);
+        setError(`Failed to load forms: ${error.message}`);
+        throw error;
+      }
+
+      console.log("Forms fetched:", data);
       setForms(data || []);
     } catch (error: any) {
+      console.error("Unexpected error fetching forms:", error);
       toast.error(error.message);
     } finally {
       setLoading(false);
@@ -84,24 +146,50 @@ const Index = () => {
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      console.log("Attempting admin login...");
+      setLoading(true);
+      setError(null);
+      
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Login error:", error);
+        setError(`Login failed: ${error.message}`);
+        throw error;
+      }
+      
+      console.log("Login successful:", data);
+      toast.success("Login successful");
     } catch (error: any) {
+      console.error("Login error:", error);
       toast.error(error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleLogout = async () => {
     try {
+      console.log("Logging out...");
+      setLoading(true);
       const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      if (error) {
+        console.error("Logout error:", error);
+        setError(`Logout failed: ${error.message}`);
+        throw error;
+      }
+      
       toast.success("Logged out successfully");
+      setSession(null);
+      setIsAdmin(false);
     } catch (error: any) {
+      console.error("Logout error:", error);
       toast.error(error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -110,6 +198,7 @@ const Index = () => {
       const file = e.target.files?.[0];
       if (!file) return;
 
+      console.log("Uploading config file:", file.name);
       setUploading(true);
 
       // Always upload as config.json to ensure consistent naming
@@ -118,7 +207,10 @@ const Index = () => {
         .from('configs')
         .upload(filePath, file, { upsert: true });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error("Config upload error:", uploadError);
+        throw uploadError;
+      }
       
       toast.success("Config file uploaded successfully!");
     } catch (error: any) {
@@ -131,18 +223,53 @@ const Index = () => {
 
   const handleDeleteForm = async (formId: string) => {
     try {
+      console.log("Deleting form:", formId);
       const { error } = await supabase
         .from('forms')
         .delete()
         .eq('id', formId);
 
-      if (error) throw error;
+      if (error) {
+        console.error("Form delete error:", error);
+        throw error;
+      }
+      
       toast.success("Form deleted successfully!");
       fetchForms();
     } catch (error: any) {
+      console.error("Form delete error:", error);
       toast.error(error.message);
     }
   };
+
+  const handleEditForm = (formId: string) => {
+    navigate(`/create-form?formId=${formId}`);
+  };
+
+  // Show error message if there was an error during initialization
+  if (error && !loading) {
+    return (
+      <div className="min-h-screen bg-secondary flex items-center justify-center">
+        <Card className="w-full max-w-md p-8 text-center">
+          <h1 className="text-2xl font-semibold mb-4">Error</h1>
+          <p className="text-red-500 mb-4">{error}</p>
+          <Button onClick={() => window.location.reload()}>Reload Page</Button>
+        </Card>
+      </div>
+    );
+  }
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-secondary flex items-center justify-center">
+        <Card className="w-full max-w-md p-8 text-center">
+          <h1 className="text-2xl font-semibold mb-4">Loading</h1>
+          <p className="text-gray-500 mb-4">Please wait...</p>
+        </Card>
+      </div>
+    );
+  }
 
   if (!session) {
     return (
@@ -174,8 +301,8 @@ const Index = () => {
                 required
               />
             </div>
-            <Button type="submit" className="w-full">
-              Login
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? "Logging in..." : "Login"}
             </Button>
           </form>
         </Card>
@@ -270,6 +397,13 @@ const Index = () => {
                       }}
                     >
                       <Icons.copy className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="px-3"
+                      onClick={() => handleEditForm(form.id)}
+                    >
+                      <Pencil className="h-4 w-4" />
                     </Button>
                     <Button
                       variant="destructive"
