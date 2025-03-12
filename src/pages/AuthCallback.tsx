@@ -5,6 +5,14 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from 'react-router-dom';
 
+interface TokenResponse {
+  access_token: string;
+  expires_in: number;
+  refresh_token?: string;
+  error?: string;
+  error_description?: string;
+}
+
 const AuthCallback = () => {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState('');
@@ -57,14 +65,48 @@ const AuthCallback = () => {
         const expiresInMs = tokenResponse.expires_in * 1000;
         const expiresAt = new Date(Date.now() + expiresInMs).toISOString();
 
-        const { error: upsertError } = await supabase
+        // Check if token already exists for user
+        const { data: existingToken, error: checkError } = await supabase
           .from('user_tokens')
-          .upsert({
-            user_id: session.user.id,
-            access_token: tokenResponse.access_token,
-            refresh_token: tokenResponse.refresh_token,
-            expires_at: expiresAt
-          });
+          .select('id')
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+        
+        if (checkError) {
+          console.error("Error checking for existing token:", checkError);
+          setStatus('error');
+          setErrorMessage('Failed to check for existing token');
+          return;
+        }
+
+        let upsertError;
+
+        if (existingToken) {
+          // Update existing token
+          const { error } = await supabase
+            .from('user_tokens')
+            .update({
+              access_token: tokenResponse.access_token,
+              refresh_token: tokenResponse.refresh_token,
+              expires_at: expiresAt,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingToken.id);
+          
+          upsertError = error;
+        } else {
+          // Insert new token
+          const { error } = await supabase
+            .from('user_tokens')
+            .insert({
+              user_id: session.user.id,
+              access_token: tokenResponse.access_token,
+              refresh_token: tokenResponse.refresh_token,
+              expires_at: expiresAt
+            });
+          
+          upsertError = error;
+        }
 
         if (upsertError) {
           console.error("Failed to store tokens:", upsertError);
@@ -91,7 +133,7 @@ const AuthCallback = () => {
     handleCallback();
   }, [navigate]);
 
-  const exchangeCodeForTokens = async (code: string, redirectUri: string) => {
+  const exchangeCodeForTokens = async (code: string, redirectUri: string): Promise<TokenResponse> => {
     const TENANT_ID = "04ec3963-dddc-45fb-afb7-85fa38e19b99";
     const CLIENT_ID = "7c8cca7c-7351-4d57-b94d-18e2ba1e4e24";
 

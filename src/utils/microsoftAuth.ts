@@ -9,6 +9,14 @@ interface TokenResponse {
   error_description?: string;
 }
 
+interface UserToken {
+  id?: string;
+  user_id: string;
+  access_token: string;
+  refresh_token: string;
+  expires_at: string;
+}
+
 const TENANT_ID = "04ec3963-dddc-45fb-afb7-85fa38e19b99";
 const CLIENT_ID = "7c8cca7c-7351-4d57-b94d-18e2ba1e4e24";
 
@@ -87,20 +95,20 @@ export async function ensureValidToken(): Promise<boolean> {
     }
     
     // Get Microsoft token from user's metadata or other storage
-    const { data: userData, error: userError } = await supabase
+    const { data: userToken, error: userError } = await supabase
       .from('user_tokens')
-      .select('refresh_token, expires_at')
+      .select('refresh_token, expires_at, access_token')
       .eq('user_id', session.user.id)
       .maybeSingle();
       
-    if (userError || !userData) {
+    if (userError || !userToken) {
       console.log("No Microsoft token available:", userError?.message);
       return false;
     }
     
     // Check if token is expired
     const now = new Date();
-    const expiresAt = new Date(userData.expires_at);
+    const expiresAt = new Date(userToken.expires_at);
     
     if (expiresAt > now) {
       console.log("Microsoft token still valid");
@@ -109,7 +117,7 @@ export async function ensureValidToken(): Promise<boolean> {
     
     // Token is expired, attempt to refresh
     console.log("Microsoft token expired, attempting refresh");
-    const refreshResult = await refreshMicrosoftToken(userData.refresh_token);
+    const refreshResult = await refreshMicrosoftToken(userToken.refresh_token);
     
     if (refreshResult.error) {
       if (refreshResult.error === "invalid_grant" && 
@@ -131,7 +139,7 @@ export async function ensureValidToken(): Promise<boolean> {
       .from('user_tokens')
       .update({
         access_token: refreshResult.access_token,
-        refresh_token: refreshResult.refresh_token || userData.refresh_token,
+        refresh_token: refreshResult.refresh_token || userToken.refresh_token,
         expires_at: newExpiresAt.toISOString()
       })
       .eq('user_id', session.user.id);
