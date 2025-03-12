@@ -1,4 +1,3 @@
-
 import { Button } from "@/components/ui/button";
 import { FormBuilder } from "@/components/FormBuilder";
 import { useState, useEffect } from "react";
@@ -11,6 +10,7 @@ import { Link } from 'react-router-dom';
 import { Icons } from "@/components/ui/icons";
 import { useNavigate } from "react-router-dom";
 import { Pencil } from "lucide-react";
+import { ensureValidToken, initiateInteractiveLogin } from "@/utils/microsoftAuth";
 
 interface FormType {
   id: string;
@@ -53,6 +53,13 @@ const Index = () => {
         
         if (data.session?.user?.id) {
           await checkIfAdmin(data.session.user.id);
+          
+          if (isAdmin) {
+            const hasValidToken = await ensureValidToken();
+            if (!hasValidToken) {
+              console.log("No valid Microsoft token available");
+            }
+          }
         } else {
           setIsAdmin(false);
           setLoading(false);
@@ -201,7 +208,6 @@ const Index = () => {
       console.log("Uploading config file:", file.name);
       setUploading(true);
 
-      // Always upload as config.json to ensure consistent naming
       const filePath = `${session.user.id}/config.json`;
       const { error: uploadError } = await supabase.storage
         .from('configs')
@@ -246,7 +252,16 @@ const Index = () => {
     navigate(`/create-form?formId=${formId}`);
   };
 
-  // Show error message if there was an error during initialization
+  const connectMicrosoftAccount = async () => {
+    try {
+      console.log("Initiating Microsoft account connection");
+      initiateInteractiveLogin();
+    } catch (error: any) {
+      console.error("Microsoft connection error:", error);
+      toast.error("Failed to connect Microsoft account: " + error.message);
+    }
+  };
+
   if (error && !loading) {
     return (
       <div className="min-h-screen bg-secondary flex items-center justify-center">
@@ -259,7 +274,6 @@ const Index = () => {
     );
   }
 
-  // Show loading state
   if (loading) {
     return (
       <div className="min-h-screen bg-secondary flex items-center justify-center">
@@ -329,9 +343,14 @@ const Index = () => {
       <header className="border-b bg-white/80 backdrop-blur-sm fixed top-0 w-full z-50">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-semibold text-primary">Form Architect</h1>
-          <Button onClick={handleLogout} variant="outline">
-            Logout
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={connectMicrosoftAccount} variant="outline">
+              Connect Microsoft
+            </Button>
+            <Button onClick={handleLogout} variant="outline">
+              Logout
+            </Button>
+          </div>
         </div>
       </header>
 
