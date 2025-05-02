@@ -314,6 +314,14 @@ const Index = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
+              <div className="flex justify-end mt-1">
+                <a 
+                  href="/password-reset" 
+                  className="text-sm text-primary hover:underline"
+                >
+                  Forgot password?
+                </a>
+              </div>
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Logging in..." : "Login"}

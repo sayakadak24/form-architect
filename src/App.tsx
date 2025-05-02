@@ -8,6 +8,7 @@ import CreateForm from "./pages/CreateForm";
 import ViewForm from "./pages/ViewForm";
 import NotFound from "./pages/NotFound";
 import AuthCallback from "./pages/AuthCallback";
+import PasswordReset from "./pages/PasswordReset";
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
         <Route path="/create-form" element={<CreateForm />} />
         <Route path="/form/:id" element={<ViewForm />} />
         <Route path="/auth-callback" element={<AuthCallback />} />
+        <Route path="/password-reset" element={<PasswordReset />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       <Toaster />
