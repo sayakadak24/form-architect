@@ -4,6 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { iconMap } from "./icons";
 import { useState } from "react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 
 interface FormElementEditProps {
   element: {
@@ -16,6 +18,10 @@ interface FormElementEditProps {
       condition: string;
       targetId: string;
     };
+    validation?: {
+      sql?: string;
+      errorMessage?: string;
+    };
   };
   allElements: Array<FormElementEditProps['element']>;
   onUpdate: (id: string, updates: Partial<FormElementEditProps['element']>) => void;
@@ -23,15 +29,32 @@ interface FormElementEditProps {
 
 export const FormElementEdit = ({ element, onUpdate, allElements }: FormElementEditProps) => {
   const [isEditing, setIsEditing] = useState(false);
+  const [showSqlValidation, setShowSqlValidation] = useState(!!element.validation?.sql);
   const [tempLabel, setTempLabel] = useState(element.label);
   const [tempOptions, setTempOptions] = useState<string[]>(element.options || []);
+  const [tempSqlQuery, setTempSqlQuery] = useState(element.validation?.sql || '');
+  const [tempErrorMessage, setTempErrorMessage] = useState(
+    element.validation?.errorMessage || 'Invalid input. Please check your entry.'
+  );
+  
   const IconComponent = iconMap[element.type as keyof typeof iconMap];
 
   const handleSave = () => {
-    onUpdate(element.id, {
+    const updates: Partial<FormElementEditProps['element']> = {
       label: tempLabel,
       options: tempOptions,
-    });
+    };
+
+    if (showSqlValidation) {
+      updates.validation = {
+        sql: tempSqlQuery,
+        errorMessage: tempErrorMessage
+      };
+    } else {
+      updates.validation = undefined;
+    }
+
+    onUpdate(element.id, updates);
     setIsEditing(false);
   };
 
@@ -53,6 +76,9 @@ export const FormElementEdit = ({ element, onUpdate, allElements }: FormElementE
               <div>
                 <h3 className="font-medium">{element.label}</h3>
                 <p className="text-sm text-gray-500">{element.type}</p>
+                {element.validation?.sql && (
+                  <p className="text-xs text-blue-500 mt-1">SQL validation active</p>
+                )}
               </div>
             )}
           </div>
@@ -108,6 +134,48 @@ export const FormElementEdit = ({ element, onUpdate, allElements }: FormElementE
                 </Button>
               </div>
             )}
+
+            <div className="space-y-2">
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id={`sql-validation-${element.id}`} 
+                  checked={showSqlValidation}
+                  onCheckedChange={(checked) => setShowSqlValidation(!!checked)}
+                />
+                <label 
+                  htmlFor={`sql-validation-${element.id}`}
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Enable SQL Validation
+                </label>
+              </div>
+
+              {showSqlValidation && (
+                <div className="space-y-2 pt-2">
+                  <div>
+                    <label className="text-sm font-medium">SQL Query</label>
+                    <Textarea
+                      value={tempSqlQuery}
+                      onChange={(e) => setTempSqlQuery(e.target.value)}
+                      placeholder="SELECT * FROM your_table WHERE column = $1"
+                      className="min-h-[100px]"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Use $1 to reference this field's value. Query must return at least 1 row for validation to pass.
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <label className="text-sm font-medium">Error Message</label>
+                    <Input
+                      value={tempErrorMessage}
+                      onChange={(e) => setTempErrorMessage(e.target.value)}
+                      placeholder="Invalid input"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="space-y-2">
               <h4 className="text-sm font-medium">Branching Logic</h4>

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const CreateForm = () => {
   const navigate = useNavigate();
@@ -14,6 +15,7 @@ const CreateForm = () => {
   const [description, setDescription] = useState("");
   const [excelUrl, setExcelUrl] = useState("");
   const [elements, setElements] = useState([]);
+  const [sqlValidationEnabled, setSqlValidationEnabled] = useState(false);
 
   const handleSubmit = async () => {
     try {
@@ -37,7 +39,8 @@ const CreateForm = () => {
             description,
             excel_url: excelUrl,
             elements,
-            user_id: session.user.id // Set the user_id when creating the form
+            user_id: session.user.id,
+            sql_validation_enabled: sqlValidationEnabled
           }
         ])
         .select()
@@ -88,6 +91,24 @@ const CreateForm = () => {
                 onChange={(e) => setExcelUrl(e.target.value)}
                 placeholder="Enter Excel file URL"
               />
+            </div>
+            <div className="flex items-center space-x-2 pt-2">
+              <Checkbox 
+                id="sql-validation-enabled" 
+                checked={sqlValidationEnabled}
+                onCheckedChange={(checked) => setSqlValidationEnabled(!!checked)}
+              />
+              <div className="grid gap-1.5 leading-none">
+                <label
+                  htmlFor="sql-validation-enabled"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Enable SQL Validation
+                </label>
+                <p className="text-sm text-muted-foreground">
+                  Allow form questions to be validated against database queries
+                </p>
+              </div>
             </div>
           </div>
         </Card>

@@ -13,12 +13,17 @@ interface FormElementProps {
       condition: string;
       targetId: string;
     };
+    validation?: {
+      sql?: string;
+      errorMessage?: string;
+    };
   };
   onUpdate?: (id: string, updates: Partial<FormElementProps['element']>) => void;
   isPreview?: boolean;
   allElements?: FormElementProps['element'][];
   responses?: Record<string, any>;
   onResponseChange?: (id: string, value: any) => void;
+  onValidationChange?: (id: string, isValid: boolean) => void;
 }
 
 export const FormElement = ({ 
@@ -27,7 +32,8 @@ export const FormElement = ({
   isPreview = false, 
   allElements = [],
   responses = {},
-  onResponseChange
+  onResponseChange,
+  onValidationChange
 }: FormElementProps) => {
   const shouldShowElement = () => {
     if (!element.branchingLogic) return true;
@@ -49,6 +55,7 @@ export const FormElement = ({
         element={element}
         responses={responses}
         onResponseChange={onResponseChange!}
+        onValidationChange={onValidationChange}
       />
     );
   }
