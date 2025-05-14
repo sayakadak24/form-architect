@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/use-toast";
 import { AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
@@ -25,7 +25,7 @@ export const ValidationHandler = ({
   const [message, setMessage] = useState<string>("");
 
   useEffect(() => {
-    if (!validationQuery || !value) {
+    if (!validationQuery || value === undefined || value === null || value === '') {
       // If no validation query or no value, consider it valid
       setIsValid(true);
       onValidationChange(fieldId, true);
@@ -36,6 +36,7 @@ export const ValidationHandler = ({
     const validateValue = async () => {
       try {
         setIsValidating(true);
+        setMessage("Validating...");
         
         const { data: response, error } = await supabase.functions.invoke('validate-sql', {
           body: {
@@ -46,6 +47,11 @@ export const ValidationHandler = ({
 
         if (error) {
           console.error("SQL Validation error:", error);
+          toast({
+            title: "Validation Error",
+            description: "There was an error executing the validation query",
+            variant: "destructive"
+          });
           setIsValid(true); // Default to valid if there's an error with the function
           onValidationChange(fieldId, true);
           return;
@@ -73,10 +79,21 @@ export const ValidationHandler = ({
     // Add a small delay to prevent excessive validations during typing
     const timeoutId = setTimeout(() => {
       validateValue();
-    }, 500);
+    }, 300); // Reduced from 500ms to 300ms for faster feedback
 
     return () => clearTimeout(timeoutId);
   }, [validationQuery, value, fieldId, errorMessage, onValidationChange]);
+
+  if (isValidating) {
+    return (
+      <Alert variant="default" className="mt-2 bg-blue-50 text-blue-700 border-blue-200">
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>
+          Validating...
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   if (!message || isValid) {
     return null;
@@ -86,7 +103,7 @@ export const ValidationHandler = ({
     <Alert variant="destructive" className="mt-2">
       <AlertCircle className="h-4 w-4" />
       <AlertDescription>
-        {isValidating ? "Validating..." : message}
+        {message}
       </AlertDescription>
     </Alert>
   );

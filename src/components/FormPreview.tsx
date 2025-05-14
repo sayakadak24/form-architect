@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { FormElement } from "@/components/FormElement";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
 interface FormPreviewProps {
@@ -41,7 +41,8 @@ export const FormPreview = ({ elements, responses = {}, onResponseChange, formId
     // Check if all required fields are filled and valid
     const missingFields = requiredElements.filter(field => {
       const response = currentResponses[field.id];
-      const isEmpty = !response || (Array.isArray(response) && response.length === 0);
+      const isEmpty = response === undefined || response === null || 
+                    response === '' || (Array.isArray(response) && response.length === 0);
       const isInvalid = field.validation?.sql && validationStatus[field.id] === false;
       
       return isEmpty || isInvalid;
@@ -64,11 +65,16 @@ export const FormPreview = ({ elements, responses = {}, onResponseChange, formId
     
     const missingFields = requiredFields.filter(field => {
       const response = currentResponses[field.id];
-      return !response || (Array.isArray(response) && response.length === 0);
+      return response === undefined || response === null || 
+             response === '' || (Array.isArray(response) && response.length === 0);
     });
 
     if (missingFields.length > 0) {
-      toast.error(`Please fill in all required fields: ${missingFields.map(f => f.label).join(', ')}`);
+      toast({
+        title: "Missing Required Fields",
+        description: `Please fill in all required fields: ${missingFields.map(f => f.label).join(', ')}`,
+        variant: "destructive"
+      });
       return;
     }
 
@@ -78,7 +84,11 @@ export const FormPreview = ({ elements, responses = {}, onResponseChange, formId
     );
 
     if (invalidFields.length > 0) {
-      toast.error(`Please correct the invalid fields: ${invalidFields.map(f => f.label).join(', ')}`);
+      toast({
+        title: "Validation Errors",
+        description: `Please correct the invalid fields: ${invalidFields.map(f => f.label).join(', ')}`,
+        variant: "destructive"
+      });
       return;
     }
 
@@ -97,7 +107,10 @@ export const FormPreview = ({ elements, responses = {}, onResponseChange, formId
 
       if (functionError) throw functionError;
       
-      toast.success("Form submitted successfully!");
+      toast({
+        title: "Success",
+        description: "Form submitted successfully!"
+      });
 
       // Clear responses after successful submission
       if (onResponseChange) {
@@ -107,7 +120,11 @@ export const FormPreview = ({ elements, responses = {}, onResponseChange, formId
       }
       
     } catch (error: any) {
-      toast.error(error.message);
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
     } finally {
       setIsSubmitting(false);
     }
